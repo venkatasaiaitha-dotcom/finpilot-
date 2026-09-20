@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Transaction, Category } from '../types';
-import { Search, Filter, AlertTriangle, Repeat, Tag, ArrowUpRight, ArrowDownRight, Plus, Check } from 'lucide-react';
+import { Search, Filter, AlertTriangle, Repeat, Tag, ArrowUpRight, ArrowDownRight, Plus, Check, FileSpreadsheet } from 'lucide-react';
 import { formatINR } from '../utils/currency';
 
 interface TransactionLedgerProps {
@@ -8,6 +8,7 @@ interface TransactionLedgerProps {
   onUpdateCategory: (id: string, category: Category) => void;
   onAddTransaction: (transaction: Transaction) => void;
   onOpenUploadModal?: () => void;
+  onOpenGoogleSheets?: () => void;
 }
 
 const CATEGORIES: Category[] = [
@@ -32,6 +33,7 @@ export const TransactionLedger: React.FC<TransactionLedgerProps> = ({
   onUpdateCategory,
   onAddTransaction,
   onOpenUploadModal,
+  onOpenGoogleSheets,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -106,6 +108,16 @@ export const TransactionLedger: React.FC<TransactionLedgerProps> = ({
         </div>
 
         <div className="flex items-center gap-2 self-start md:self-auto">
+          {onOpenGoogleSheets && (
+            <button
+              onClick={onOpenGoogleSheets}
+              title="Export, sync, or import transactions with Google Sheets"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border border-emerald-200 text-emerald-800 bg-emerald-50 hover:bg-emerald-100 transition-colors shadow-2xs"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Google Sheets</span>
+            </button>
+          )}
           {onOpenUploadModal && (
             <button
               onClick={onOpenUploadModal}

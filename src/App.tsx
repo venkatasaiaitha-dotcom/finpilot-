@@ -9,6 +9,9 @@ import { GoalImpactAnalyzer } from './components/GoalImpactAnalyzer';
 import { TransactionLedger } from './components/TransactionLedger';
 import { MonthlySummaryModal } from './components/MonthlySummaryModal';
 import { StatementUploaderModal } from './components/StatementUploaderModal';
+import { GoogleSheetsModal } from './components/GoogleSheetsModal';
+import { initAuth } from './services/googleAuth';
+import { User } from 'firebase/auth';
 
 import {
   INITIAL_TRANSACTIONS,
@@ -114,6 +117,19 @@ export default function App() {
   // Modal states
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
+  const [isGoogleSheetsOpen, setIsGoogleSheetsOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+  // Initialize Firebase Auth listener for Google Workspace
+  useEffect(() => {
+    const unsubscribe = initAuth(
+      (user) => setCurrentUser(user),
+      () => setCurrentUser(null)
+    );
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
 
   // Persist to local storage
   useEffect(() => {
@@ -416,6 +432,7 @@ export default function App() {
         currentMonth={monthDisplayName}
         onOpenUpload={() => setIsUploadModalOpen(true)}
         onOpenSummary={() => setIsSummaryModalOpen(true)}
+        onOpenGoogleSheets={() => setIsGoogleSheetsOpen(true)}
         onOpenAddTransaction={() => {
           const el = document.getElementById('transactions-ledger-card');
           el?.scrollIntoView({ behavior: 'smooth' });
@@ -424,6 +441,7 @@ export default function App() {
         onLoadSampleData={handleLoadSampleData}
         unresolvedAnomaliesCount={anomalies.filter((a) => !a.resolved).length}
         hasData={hasData}
+        currentUser={currentUser}
       />
 
       {/* Main Container */}
@@ -480,6 +498,7 @@ export default function App() {
           onUpdateCategory={handleUpdateCategory}
           onAddTransaction={handleAddTransaction}
           onOpenUploadModal={() => setIsUploadModalOpen(true)}
+          onOpenGoogleSheets={() => setIsGoogleSheetsOpen(true)}
         />
       </main>
 
@@ -510,6 +529,18 @@ export default function App() {
         isOpen={isSummaryModalOpen}
         onClose={() => setIsSummaryModalOpen(false)}
         financialContext={financialContext}
+      />
+
+      <GoogleSheetsModal
+        isOpen={isGoogleSheetsOpen}
+        onClose={() => setIsGoogleSheetsOpen(false)}
+        currentUser={currentUser}
+        onAuthChange={(user) => setCurrentUser(user)}
+        transactions={transactions}
+        budgets={budgets}
+        obligations={obligations}
+        goals={goals}
+        onImportTransactions={handleImportTransactions}
       />
     </div>
   );

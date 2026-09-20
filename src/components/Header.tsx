@@ -1,15 +1,18 @@
 import React from 'react';
-import { Bot, RefreshCw, Trash2, UploadCloud, Plus, Sparkles, ShieldAlert, IndianRupee } from 'lucide-react';
+import { Bot, RefreshCw, Trash2, UploadCloud, Plus, Sparkles, ShieldAlert, IndianRupee, FileSpreadsheet } from 'lucide-react';
+import { User } from 'firebase/auth';
 
 interface HeaderProps {
   currentMonth: string;
   onOpenUpload: () => void;
   onOpenSummary: () => void;
   onOpenAddTransaction: () => void;
+  onOpenGoogleSheets: () => void;
   onWipeData: () => void;
   onLoadSampleData: () => void;
   unresolvedAnomaliesCount: number;
   hasData: boolean;
+  currentUser: User | null;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -17,10 +20,12 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenUpload,
   onOpenSummary,
   onOpenAddTransaction,
+  onOpenGoogleSheets,
   onWipeData,
   onLoadSampleData,
   unresolvedAnomaliesCount,
   hasData,
+  currentUser,
 }) => {
   return (
     <header id="app-header" className="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
@@ -73,6 +78,23 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
             <span>AI Executive Briefing</span>
+          </button>
+
+          <button
+            id="header-google-sheets-btn"
+            onClick={onOpenGoogleSheets}
+            title="Export, sync, or import transactions with Google Sheets"
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors shadow-2xs ${
+              currentUser
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
+                : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+            }`}
+          >
+            <FileSpreadsheet className={`w-3.5 h-3.5 ${currentUser ? 'text-emerald-600' : 'text-emerald-600'}`} />
+            <span>Google Sheets</span>
+            {currentUser ? (
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" title="Connected" />
+            ) : null}
           </button>
 
           <button
