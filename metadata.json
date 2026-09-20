@@ -1,0 +1,6 @@
+{
+  "name": "FinPilot: Personal Finance Decision Support Agent",
+  "description": "Intelligent AI-powered personal finance decision support agent for statement parsing, subscription detection, recurring obligation forecasting, budget commitment tracking, goal impact analysis, and natural-language Q&A.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
