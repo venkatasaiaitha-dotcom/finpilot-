@@ -157,3 +157,14 @@ export interface FinancialContextSnapshot {
     projectedCompletion: string;
   }[];
 }
+
+export type NavigationTab =
+  | 'overview'
+  | 'assistant'
+  | 'transactions'
+  | 'budgets'
+  | 'goals'
+  | 'recurring'
+  | 'alerts'
+  | 'settings';
+

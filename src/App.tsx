@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
-import { StatCards } from './components/StatCards';
+import { OverviewView } from './components/views/OverviewView';
+import { SettingsView } from './components/views/SettingsView';
 import { AgentChat } from './components/AgentChat';
 import { BudgetManager } from './components/BudgetManager';
 import { RecurringSubscriptions } from './components/RecurringSubscriptions';
 import { AnomaliesAlerts } from './components/AnomaliesAlerts';
 import { GoalImpactAnalyzer } from './components/GoalImpactAnalyzer';
 import { TransactionLedger } from './components/TransactionLedger';
+import { AnalyzePurchaseModal } from './components/AnalyzePurchaseModal';
 import { MonthlySummaryModal } from './components/MonthlySummaryModal';
 import { StatementUploaderModal } from './components/StatementUploaderModal';
 import { GoogleSheetsModal } from './components/GoogleSheetsModal';
@@ -30,6 +33,7 @@ import {
   SpendingAnomaly,
   Category,
   FinancialContextSnapshot,
+  NavigationTab,
 } from './types';
 
 // Helpers to ensure unique IDs across items
@@ -58,7 +62,13 @@ function sanitizeObligationsList(obs: RecurringObligation[]): RecurringObligatio
 }
 
 export default function App() {
-  // Local storage hydrated states - defaults to rich Indian sample data
+  // Navigation & Layout states
+  const [activeTab, setActiveTab] = useState<NavigationTab>('overview');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [assistantPrompt, setAssistantPrompt] = useState<string | undefined>(undefined);
+
+  // Local storage hydrated states
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     const saved = localStorage.getItem('finpilot_transactions_v2') || localStorage.getItem('finpilot_transactions');
     if (saved) {
@@ -115,6 +125,7 @@ export default function App() {
   });
 
   // Modal states
+  const [isAnalyzeModalOpen, setIsAnalyzeModalOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
   const [isGoogleSheetsOpen, setIsGoogleSheetsOpen] = useState(false);
@@ -304,7 +315,6 @@ export default function App() {
   const handleAddTransaction = (newTx: Transaction) => {
     setTransactions((prev) => [newTx, ...prev]);
 
-    // Check if recurring
     if (newTx.isRecurring) {
       setObligations((prev) => [
         {
@@ -313,7 +323,7 @@ export default function App() {
           category: newTx.category,
           amount: newTx.amount,
           frequency: newTx.recurringFrequency || 'monthly',
-          nextDueDate: '2026-10-15',
+          nextDueDate: '2026-11-15',
           status: 'active',
           paymentMethod: newTx.paymentMethod || 'UPI / Bank',
           isSubscription: newTx.category === 'Subscriptions & Digital',
@@ -381,7 +391,6 @@ export default function App() {
     setGoals((prev) => [...prev, { ...goal, id: uniqueId }]);
   };
 
-  // Complete wipe of all user data
   const handleWipeData = () => {
     setTransactions([]);
     setObligations([]);
@@ -408,7 +417,6 @@ export default function App() {
     localStorage.setItem('finpilot_user_cleared', 'true');
   };
 
-  // 1-click loading / resetting of the Indian Rupees sample dataset
   const handleLoadSampleData = () => {
     localStorage.removeItem('finpilot_user_cleared');
     setTransactions(SAMPLE_INDIAN_DATASET.transactions);
@@ -424,57 +432,90 @@ export default function App() {
   };
 
   const hasData = transactions.length > 0 || obligations.length > 0 || goals.length > 0;
+  const unresolvedCount = anomalies.filter((a) => !a.resolved).length;
 
   return (
-    <div className="min-h-screen bg-slate-100/60 text-slate-900 flex flex-col font-sans antialiased selection:bg-emerald-500 selection:text-white">
-      {/* Global Application Header */}
-      <Header
-        currentMonth={monthDisplayName}
-        onOpenUpload={() => setIsUploadModalOpen(true)}
-        onOpenSummary={() => setIsSummaryModalOpen(true)}
-        onOpenGoogleSheets={() => setIsGoogleSheetsOpen(true)}
-        onOpenAddTransaction={() => {
-          const el = document.getElementById('transactions-ledger-card');
-          el?.scrollIntoView({ behavior: 'smooth' });
+    <div className="min-h-screen bg-[#0b0f17] text-slate-100 flex flex-row font-sans antialiased selection:bg-emerald-500 selection:text-slate-950">
+      {/* 1. Left Navigation Sidebar */}
+      <Sidebar
+        activeTab={activeTab}
+        onSelectTab={(tab) => {
+          setActiveTab(tab);
+          setAssistantPrompt(undefined);
         }}
-        onWipeData={handleWipeData}
-        onLoadSampleData={handleLoadSampleData}
-        unresolvedAnomaliesCount={anomalies.filter((a) => !a.resolved).length}
-        hasData={hasData}
+        unresolvedAnomaliesCount={unresolvedCount}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed((prev) => !prev)}
+        isMobileOpen={isMobileNavOpen}
+        onCloseMobile={() => setIsMobileNavOpen(false)}
         currentUser={currentUser}
+        onOpenGoogleSheets={() => setIsGoogleSheetsOpen(true)}
       />
 
-      {/* Main Container */}
-      <main className="max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 flex-1">
-        {/* Top-Level Stat Cards in Rupees */}
-        <StatCards
-          totalIncome={totalIncome}
-          totalExpenses={totalExpenses}
-          netSavings={netSavings}
-          savingsRate={savingsRate}
-          committedUpcoming={committedUpcoming}
-          unallocatedBuffer={unallocatedBuffer}
-          expenseChangePercent={0}
-          activeSubscriptionsMonthlyTotal={activeSubscriptionsMonthlyTotal}
+      {/* 2. Main Content View Area */}
+      <div className="flex-1 flex flex-col min-w-0 min-h-screen">
+        {/* Top Header */}
+        <Header
+          activeTab={activeTab}
+          currentMonth={monthDisplayName}
+          onOpenMobileNav={() => setIsMobileNavOpen(true)}
+          onOpenUpload={() => setIsUploadModalOpen(true)}
+          onOpenSummary={() => setIsSummaryModalOpen(true)}
+          onOpenAddTransaction={() => {
+            setActiveTab('transactions');
+          }}
+          onAnalyzePurchase={() => setIsAnalyzeModalOpen(true)}
+          unresolvedAnomaliesCount={unresolvedCount}
+          onNavigateToAlerts={() => setActiveTab('alerts')}
         />
 
-        {/* Anomalies Banner */}
-        <AnomaliesAlerts anomalies={anomalies} onResolveAnomaly={handleResolveAnomaly} />
+        {/* View Router */}
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
+          {activeTab === 'overview' && (
+            <OverviewView
+              netSavings={netSavings}
+              savingsRate={savingsRate}
+              totalIncome={totalIncome}
+              totalExpenses={totalExpenses}
+              totalBudget={totalBudget}
+              spentSoFar={spentSoFar}
+              committedUpcoming={committedUpcoming}
+              unallocatedBuffer={unallocatedBuffer}
+              recentTransactions={transactions}
+              financialContext={financialContext}
+              onNavigateToTab={(tab) => setActiveTab(tab)}
+              onAnalyzePurchase={() => setIsAnalyzeModalOpen(true)}
+              onOpenUpload={() => setIsUploadModalOpen(true)}
+              onOpenAddTransaction={() => setActiveTab('transactions')}
+            />
+          )}
 
-        {/* Two-Column Grid: Left Column = AI Agent & Budget; Right Column = Goals & Subscriptions */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          {/* Left Column: FinPilot Agent Chat (7 cols) */}
-          <div className="lg:col-span-7 space-y-6">
-            <AgentChat financialContext={financialContext} />
+          {activeTab === 'assistant' && (
+            <AgentChat
+              financialContext={financialContext}
+              initialPrompt={assistantPrompt}
+            />
+          )}
+
+          {activeTab === 'transactions' && (
+            <TransactionLedger
+              transactions={transactions}
+              onUpdateCategory={handleUpdateCategory}
+              onAddTransaction={handleAddTransaction}
+              onOpenUploadModal={() => setIsUploadModalOpen(true)}
+              onOpenGoogleSheets={() => setIsGoogleSheetsOpen(true)}
+            />
+          )}
+
+          {activeTab === 'budgets' && (
             <BudgetManager
               budgets={synchronizedBudgets}
               onUpdateBudget={handleUpdateBudget}
               onAddCategory={handleAddBudgetCategory}
             />
-          </div>
+          )}
 
-          {/* Right Column: Goal Impact Simulator & Subscriptions (5 cols) */}
-          <div className="lg:col-span-5 space-y-6">
+          {activeTab === 'goals' && (
             <GoalImpactAnalyzer
               goals={goals}
               onAddGoal={handleAddGoal}
@@ -483,42 +524,65 @@ export default function App() {
                 .reduce((a, b) => a + b.amount, 0)}
               netSavings={netSavings}
             />
+          )}
 
+          {activeTab === 'recurring' && (
             <RecurringSubscriptions
               obligations={obligations}
               onToggleStatus={handleToggleObligationStatus}
               onAddObligation={handleAddObligation}
             />
-          </div>
-        </div>
+          )}
 
-        {/* Full Transaction Ledger */}
-        <TransactionLedger
-          transactions={transactions}
-          onUpdateCategory={handleUpdateCategory}
-          onAddTransaction={handleAddTransaction}
-          onOpenUploadModal={() => setIsUploadModalOpen(true)}
-          onOpenGoogleSheets={() => setIsGoogleSheetsOpen(true)}
-        />
-      </main>
+          {activeTab === 'alerts' && (
+            <div className="space-y-4">
+              <AnomaliesAlerts
+                anomalies={anomalies}
+                onResolveAnomaly={handleResolveAnomaly}
+              />
+            </div>
+          )}
 
-      {/* Footer */}
-      <footer className="border-t border-slate-200 bg-white py-4 mt-auto">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-2">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-slate-800">FinPilot</span>
-            <span>•</span>
-            <span>Personal Finance Decision Support Agent (INR ₹)</span>
-            <span>•</span>
-            <span>Powered by Gemini 3.8 Flash</span>
-          </div>
-          <div>
-            <span>Analytical decision support agent. Not financial or legal advisory.</span>
-          </div>
-        </div>
-      </footer>
+          {activeTab === 'settings' && (
+            <SettingsView
+              currentUser={currentUser}
+              onOpenGoogleSheets={() => setIsGoogleSheetsOpen(true)}
+              onOpenUpload={() => setIsUploadModalOpen(true)}
+              onLoadSampleData={handleLoadSampleData}
+              onWipeData={handleWipeData}
+              hasData={hasData}
+            />
+          )}
+        </main>
 
-      {/* Modals */}
+        {/* Global Footer */}
+        <footer className="border-t border-slate-800/80 bg-[#0d131f] py-4 px-4 sm:px-8 mt-auto">
+          <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-2">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-slate-300">FinPilot</span>
+              <span>•</span>
+              <span>Personal Finance Decision Support Agent (INR ₹)</span>
+              <span>•</span>
+              <span className="text-emerald-400">Gemini 3.8 Flash</span>
+            </div>
+            <div>
+              <span>Analytical decision intelligence. Not registered fiduciary or legal advisory.</span>
+            </div>
+          </div>
+        </footer>
+      </div>
+
+      {/* Global Modals */}
+      <AnalyzePurchaseModal
+        isOpen={isAnalyzeModalOpen}
+        onClose={() => setIsAnalyzeModalOpen(false)}
+        financialContext={financialContext}
+        onNavigateToAssistant={(prompt) => {
+          setAssistantPrompt(prompt);
+          setActiveTab('assistant');
+        }}
+      />
+
       <StatementUploaderModal
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}

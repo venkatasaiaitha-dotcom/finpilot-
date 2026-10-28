@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { UploadCloud, FileText, Check, AlertCircle, Sparkles, X, ArrowRight, Layers } from 'lucide-react';
-import { Transaction, Category } from '../types';
+import { UploadCloud, Check, AlertCircle, Sparkles, X, ArrowRight } from 'lucide-react';
+import { Transaction } from '../types';
 import { formatINR } from '../utils/currency';
 
 interface StatementUploaderModalProps {
@@ -61,13 +61,13 @@ export const StatementUploaderModal: React.FC<StatementUploaderModalProps> = ({
     if (!file) return;
 
     setFileName(file.name);
+    setFileMimeType(file.type);
     setError(null);
 
     const reader = new FileReader();
     if (file.type.startsWith('image/')) {
       reader.onload = () => {
         setFileBase64(reader.result as string);
-        setFileMimeType(file.type);
       };
       reader.readAsDataURL(file);
     } else {
@@ -78,10 +78,10 @@ export const StatementUploaderModal: React.FC<StatementUploaderModalProps> = ({
     }
   };
 
-  const handleProcess = async (textToProcess?: string) => {
-    const text = textToProcess !== undefined ? textToProcess : pastedText;
-    if (!text && !fileBase64) {
-      setError('Please provide text or upload a statement document.');
+  const handleProcess = async (directText?: string) => {
+    const content = directText || pastedText;
+    if (!content && !fileBase64) {
+      setError('Please provide a file, select a sample, or paste statement text.');
       return;
     }
 
@@ -89,33 +89,26 @@ export const StatementUploaderModal: React.FC<StatementUploaderModalProps> = ({
     setError(null);
 
     try {
-      const res = await fetch('/api/gemini/parse-statement', {
+      const response = await fetch('/api/gemini/parse-statement', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          textContent: text,
-          base64Image: fileBase64,
-          mimeType: fileMimeType,
-          fileName: fileName || 'Statement.csv',
+          textContent: content || undefined,
+          base64Image: fileBase64 || undefined,
+          mimeType: fileMimeType || undefined,
+          fileName: fileName || undefined,
         }),
       });
 
-      if (!res.ok) {
-        throw new Error(`Server returned ${res.status}`);
+      if (!response.ok) {
+        throw new Error(`Server returned error: ${response.status}`);
       }
 
-      const data = await res.json();
-      if (Array.isArray(data.transactions) && data.transactions.length > 0) {
-        const formatted = data.transactions.map((t: any, idx: number) => ({
-          ...t,
-          id: `imported-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 7)}`,
-          type: t.type || 'expense',
-          paymentMethod: t.paymentMethod || 'UPI / NetBanking',
-          confidence: t.confidence || 0.9,
-        }));
-        setParsedPreview(formatted);
+      const result = await response.json();
+      if (result.transactions && Array.isArray(result.transactions)) {
+        setParsedPreview(result.transactions);
       } else {
-        throw new Error('No transactions could be parsed from this input.');
+        throw new Error('No transactions could be parsed from the provided document.');
       }
     } catch (err: any) {
       console.error('Parse error:', err);
@@ -133,58 +126,58 @@ export const StatementUploaderModal: React.FC<StatementUploaderModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 z-50 overflow-y-auto">
-      <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 my-6">
+    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
+      <div className="bg-[#111827] rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-800 my-6 text-slate-200">
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+        <div className="flex items-center justify-between pb-4 border-b border-slate-800">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center">
-              <UploadCloud className="w-5 h-5" />
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center justify-center">
+              <UploadCloud className="w-5 h-5 text-emerald-400" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900">Upload & Parse Financial Records (₹)</h2>
-              <p className="text-xs text-slate-500">
+              <h2 className="text-base font-bold text-white">Upload & Parse Financial Records (₹)</h2>
+              <p className="text-xs text-slate-400">
                 AI extracts date, merchant, amount in Rupees (₹), category, and detects anomalies
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-slate-700 p-1 rounded-md hover:bg-slate-100 transition-colors"
+            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
           >
-            <X className="w-4 h-4" />
+            <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tab Selection */}
         {!parsedPreview && (
-          <div className="flex border-b border-slate-100 my-4 text-xs font-semibold">
+          <div className="flex border-b border-slate-800 my-4 text-xs font-semibold gap-2">
             <button
               onClick={() => setActiveTab('samples')}
-              className={`pb-2 px-3 border-b-2 transition-colors ${
+              className={`pb-2 px-3 border-b-2 transition-colors cursor-pointer ${
                 activeTab === 'samples'
-                  ? 'border-emerald-600 text-emerald-700'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
+                  ? 'border-emerald-500 text-emerald-400 font-bold'
+                  : 'border-transparent text-slate-400 hover:text-slate-200'
               }`}
             >
-              Indian Sample Statements (₹)
+              Sample Statements (₹)
             </button>
             <button
               onClick={() => setActiveTab('upload')}
-              className={`pb-2 px-3 border-b-2 transition-colors ${
+              className={`pb-2 px-3 border-b-2 transition-colors cursor-pointer ${
                 activeTab === 'upload'
-                  ? 'border-emerald-600 text-emerald-700'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
+                  ? 'border-emerald-500 text-emerald-400 font-bold'
+                  : 'border-transparent text-slate-400 hover:text-slate-200'
               }`}
             >
               Upload File (CSV / Image)
             </button>
             <button
               onClick={() => setActiveTab('paste')}
-              className={`pb-2 px-3 border-b-2 transition-colors ${
+              className={`pb-2 px-3 border-b-2 transition-colors cursor-pointer ${
                 activeTab === 'paste'
-                  ? 'border-emerald-600 text-emerald-700'
-                  : 'border-transparent text-slate-500 hover:text-slate-800'
+                  ? 'border-emerald-500 text-emerald-400 font-bold'
+                  : 'border-transparent text-slate-400 hover:text-slate-200'
               }`}
             >
               Paste Statement Text
@@ -197,7 +190,7 @@ export const StatementUploaderModal: React.FC<StatementUploaderModalProps> = ({
           <div className="space-y-4">
             {activeTab === 'samples' && (
               <div className="space-y-2.5">
-                <p className="text-xs text-slate-600">
+                <p className="text-xs text-slate-400">
                   Select a pre-formatted statement sample to test AI extraction in Indian Rupees instantly:
                 </p>
                 {SAMPLE_STATEMENTS.map((sample, idx) => (
@@ -208,15 +201,15 @@ export const StatementUploaderModal: React.FC<StatementUploaderModalProps> = ({
                       setFileName(sample.name);
                       handleProcess(sample.content);
                     }}
-                    className="p-3 border border-slate-200 rounded-xl hover:border-emerald-500 hover:bg-emerald-50/40 cursor-pointer transition-all flex items-center justify-between group"
+                    className="p-3.5 border border-slate-800 rounded-xl bg-slate-900/50 hover:border-emerald-500/50 hover:bg-emerald-500/5 cursor-pointer transition-all flex items-center justify-between group"
                   >
                     <div>
-                      <span className="text-xs font-bold text-slate-900 group-hover:text-emerald-800">
+                      <span className="text-xs font-bold text-white group-hover:text-emerald-300">
                         {sample.name}
                       </span>
-                      <p className="text-[11px] text-slate-500 mt-0.5">{sample.description}</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">{sample.description}</p>
                     </div>
-                    <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1">
+                    <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1 shrink-0">
                       <span>Parse</span>
                       <ArrowRight className="w-3.5 h-3.5" />
                     </span>
@@ -236,13 +229,13 @@ export const StatementUploaderModal: React.FC<StatementUploaderModalProps> = ({
                 />
                 <div
                   onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-xl p-6 text-center cursor-pointer bg-slate-50/50 hover:bg-emerald-50/20 transition-all"
+                  className="border-2 border-dashed border-slate-800 hover:border-emerald-500/60 rounded-xl p-8 text-center cursor-pointer bg-slate-900/40 hover:bg-emerald-500/5 transition-all"
                 >
-                  <UploadCloud className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-                  <span className="text-xs font-bold text-slate-800 block">
+                  <UploadCloud className="w-9 h-9 text-slate-400 mx-auto mb-2" />
+                  <span className="text-xs font-bold text-white block">
                     {fileName ? fileName : 'Choose bank CSV file or receipt image'}
                   </span>
-                  <span className="text-[11px] text-slate-500 mt-1 block">
+                  <span className="text-[11px] text-slate-400 mt-1 block">
                     Supports Indian bank statements (HDFC, SBI, ICICI, Axis), UPI logs, and receipts in ₹
                   </span>
                 </div>
@@ -251,7 +244,7 @@ export const StatementUploaderModal: React.FC<StatementUploaderModalProps> = ({
 
             {activeTab === 'paste' && (
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
                   Paste Raw Transactions or Statement Text (Rupees)
                 </label>
                 <textarea
@@ -259,23 +252,23 @@ export const StatementUploaderModal: React.FC<StatementUploaderModalProps> = ({
                   value={pastedText}
                   onChange={(e) => setPastedText(e.target.value)}
                   placeholder="Paste text like:&#10;2026-09-15 SWIGGY BANGALORE ₹650.00 Food&#10;2026-09-16 RELIANCE DIGITAL ₹4500.00 Shopping"
-                  className="w-full text-xs font-mono p-3 border border-slate-200 rounded-xl bg-slate-50 focus:outline-hidden focus:border-emerald-500"
+                  className="w-full text-xs font-mono p-3 border border-slate-800 rounded-xl bg-slate-900 text-white placeholder:text-slate-600 focus:outline-hidden focus:border-emerald-500"
                 />
               </div>
             )}
 
             {error && (
-              <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700 flex items-center gap-2">
+              <div className="p-3 bg-rose-500/15 border border-rose-500/30 rounded-xl text-xs text-rose-300 flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{error}</span>
               </div>
             )}
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-800">
               <button
                 type="button"
                 onClick={onClose}
-                className="px-3 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg"
+                className="px-4 py-2 text-xs font-medium text-slate-300 hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
               >
                 Cancel
               </button>
@@ -283,7 +276,7 @@ export const StatementUploaderModal: React.FC<StatementUploaderModalProps> = ({
                 type="button"
                 disabled={loading}
                 onClick={() => handleProcess()}
-                className="px-4 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors flex items-center gap-1.5 disabled:opacity-50"
+                className="px-4 py-2 text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl transition-all flex items-center gap-1.5 disabled:opacity-50 cursor-pointer shadow-md shadow-emerald-950/40"
               >
                 <Sparkles className="w-3.5 h-3.5" />
                 <span>{loading ? 'AI Parsing Statement...' : 'Parse Transactions'}</span>
@@ -294,46 +287,46 @@ export const StatementUploaderModal: React.FC<StatementUploaderModalProps> = ({
 
         {/* Parsed Preview Screen */}
         {parsedPreview && (
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-900">
+              <span className="text-xs font-bold text-white">
                 Extracted {parsedPreview.length} Transactions
               </span>
-              <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+              <span className="text-[11px] font-semibold text-emerald-400 bg-emerald-500/15 px-2.5 py-0.5 rounded-full border border-emerald-500/30">
                 AI Categorized in Rupees (₹)
               </span>
             </div>
 
-            <div className="border border-slate-200 rounded-xl max-h-60 overflow-y-auto divide-y divide-slate-100 text-xs">
+            <div className="border border-slate-800 rounded-xl max-h-64 overflow-y-auto divide-y divide-slate-800/80 text-xs bg-slate-900/50">
               {parsedPreview.map((t, idx) => (
-                <div key={t.id || `preview-${idx}`} className="p-2.5 flex items-center justify-between hover:bg-slate-50">
+                <div key={t.id || `preview-${idx}`} className="p-3 flex items-center justify-between hover:bg-slate-800/40">
                   <div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-slate-900">{t.merchant}</span>
-                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-600 font-medium">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-white">{t.merchant}</span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-medium">
                         {t.category}
                       </span>
                     </div>
-                    <span className="text-[10px] text-slate-400">{t.date}</span>
+                    <span className="text-[10px] text-slate-500">{t.date}</span>
                   </div>
-                  <span className="font-bold text-slate-900">{formatINR(t.amount)}</span>
+                  <span className="font-bold text-emerald-400">{formatINR(t.amount)}</span>
                 </div>
               ))}
             </div>
 
-            <div className="flex justify-between items-center pt-3 border-t border-slate-100">
+            <div className="flex justify-between items-center pt-3 border-t border-slate-800">
               <button
                 onClick={() => setParsedPreview(null)}
-                className="text-xs font-medium text-slate-500 hover:text-slate-800"
+                className="text-xs font-medium text-slate-400 hover:text-white"
               >
                 ← Back
               </button>
 
               <button
                 onClick={confirmImport}
-                className="px-4 py-2 text-xs font-semibold bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg flex items-center gap-1.5 shadow-xs"
+                className="px-4 py-2 text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 rounded-xl flex items-center gap-1.5 shadow-md shadow-emerald-950/40 cursor-pointer"
               >
-                <Check className="w-3.5 h-3.5" />
+                <Check className="w-3.5 h-3.5 stroke-[2.5]" />
                 <span>Add {parsedPreview.length} Records to Ledger</span>
               </button>
             </div>

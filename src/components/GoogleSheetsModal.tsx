@@ -281,36 +281,36 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-      <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+      <div className="bg-[#111827] text-slate-200 w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-800 overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
+        <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-[#0d131f]">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center">
-              <FileSpreadsheet className="w-5 h-5" />
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center justify-center">
+              <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
                 Google Sheets Integration
-                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                   Live Sync
                 </span>
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-slate-400">
                 Seamlessly export reports, backup cash flow, or import financial transactions with Google Workspace
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/50 transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Google Authentication Status Banner */}
-        <div className="px-6 py-3 bg-white border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="px-6 py-3 bg-slate-900/70 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           {currentUser ? (
             <div className="flex items-center justify-between w-full">
               <div className="flex items-center gap-2.5">
@@ -318,20 +318,20 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
                   <img
                     src={currentUser.photoURL}
                     alt={currentUser.displayName || 'Google User'}
-                    className="w-7 h-7 rounded-full border border-slate-200"
+                    className="w-7 h-7 rounded-full border border-slate-700"
                     referrerPolicy="no-referrer"
                   />
                 ) : (
-                  <div className="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-bold">
+                  <div className="w-7 h-7 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center text-xs font-bold">
                     {currentUser.email?.charAt(0).toUpperCase() || 'G'}
                   </div>
                 )}
                 <div>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-semibold text-slate-800">
+                    <span className="text-xs font-semibold text-white">
                       {currentUser.displayName || currentUser.email}
                     </span>
-                    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400 bg-emerald-500/15 px-1.5 py-0.5 rounded border border-emerald-500/30">
                       <ShieldCheck className="w-3 h-3" /> Connected
                     </span>
                   </div>
@@ -340,7 +340,7 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
               </div>
               <button
                 onClick={handleSignOut}
-                className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-rose-600 px-2.5 py-1 rounded-lg hover:bg-rose-50 transition-colors"
+                className="inline-flex items-center gap-1 text-xs font-medium text-slate-400 hover:text-rose-400 px-2.5 py-1 rounded-lg hover:bg-rose-500/10 transition-colors"
               >
                 <LogOut className="w-3.5 h-3.5" />
                 <span>Disconnect</span>
@@ -349,8 +349,8 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
           ) : (
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
               <div>
-                <p className="text-xs font-medium text-slate-800">Connect your Google Workspace Account</p>
-                <p className="text-[11px] text-slate-500">
+                <p className="text-xs font-medium text-white">Connect your Google Workspace Account</p>
+                <p className="text-[11px] text-slate-400">
                   Enables creating and reading Google Sheets directly in your Google Drive with your permission.
                 </p>
               </div>
@@ -358,10 +358,10 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
               <button
                 onClick={handleSignIn}
                 disabled={isSigningIn}
-                className="inline-flex items-center gap-2.5 px-3.5 py-2 rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 text-xs font-semibold shadow-2xs transition-all shrink-0 cursor-pointer disabled:opacity-50"
+                className="inline-flex items-center gap-2.5 px-3.5 py-2 rounded-xl border border-slate-700 bg-slate-800 text-white hover:bg-slate-700 text-xs font-semibold shadow-xs transition-all shrink-0 cursor-pointer disabled:opacity-50"
               >
                 {isSigningIn ? (
-                  <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+                  <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
                 ) : (
                   <svg className="w-4 h-4" viewBox="0 0 48 48">
                     <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
@@ -377,13 +377,13 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
         </div>
 
         {/* Tab Switcher */}
-        <div className="px-6 pt-3 flex border-b border-slate-100 gap-6">
+        <div className="px-6 pt-3 flex border-b border-slate-800 gap-6">
           <button
             onClick={() => setActiveTab('export')}
-            className={`pb-2.5 text-xs font-semibold flex items-center gap-1.5 border-b-2 transition-colors ${
+            className={`pb-2.5 text-xs font-semibold flex items-center gap-1.5 border-b-2 transition-colors cursor-pointer ${
               activeTab === 'export'
-                ? 'border-emerald-600 text-emerald-700'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
+                ? 'border-emerald-500 text-emerald-400 font-bold'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
             <Download className="w-3.5 h-3.5" />
@@ -391,10 +391,10 @@ export const GoogleSheetsModal: React.FC<GoogleSheetsModalProps> = ({
           </button>
           <button
             onClick={() => setActiveTab('import')}
-            className={`pb-2.5 text-xs font-semibold flex items-center gap-1.5 border-b-2 transition-colors ${
+            className={`pb-2.5 text-xs font-semibold flex items-center gap-1.5 border-b-2 transition-colors cursor-pointer ${
               activeTab === 'import'
-                ? 'border-emerald-600 text-emerald-700'
-                : 'border-transparent text-slate-500 hover:text-slate-800'
+                ? 'border-emerald-500 text-emerald-400 font-bold'
+                : 'border-transparent text-slate-400 hover:text-slate-200'
             }`}
           >
             <Upload className="w-3.5 h-3.5" />

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Budget, Category } from '../types';
-import { Target, AlertTriangle, CheckCircle, Plus, Edit2, Check, X } from 'lucide-react';
+import { Plus, Edit2, Check, X, Layers } from 'lucide-react';
 import { formatINR } from '../utils/currency';
 
 interface BudgetManagerProps {
@@ -65,7 +65,7 @@ export const BudgetManager: React.FC<BudgetManagerProps> = ({
       monthlyLimit: Number(newCategoryLimit),
       spent: 0,
       committedUpcoming: 0,
-      color: '#6366f1',
+      color: '#10b981',
     };
     if (onAddCategory) {
       onAddCategory(newBudgetObj);
@@ -78,42 +78,42 @@ export const BudgetManager: React.FC<BudgetManagerProps> = ({
   };
 
   return (
-    <div id="budget-manager-card" className="bg-white rounded-xl border border-slate-200 shadow-xs p-5">
+    <div id="budget-manager-card" className="bg-[#111827] rounded-2xl border border-slate-800 shadow-xl p-5 sm:p-6 space-y-4">
       {/* Header with summary stats */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-100 gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-4 border-b border-slate-800 gap-3">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-base font-bold text-slate-900">Budget Commitment & Tracking</h2>
-            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">
+            <h2 className="text-base font-bold text-white tracking-tight">Budget Commitment & Tracking</h2>
+            <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">
               {budgets.length} Categories
             </span>
           </div>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-xs text-slate-400 mt-0.5">
             Compare actual spending + scheduled upcoming obligations against monthly limits
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <div className="text-right">
-            <span className="text-[11px] text-slate-500 block">Overall Committed</span>
-            <span className="text-sm font-bold text-slate-900">
+            <span className="text-[11px] text-slate-400 block">Overall Committed</span>
+            <span className="text-sm font-bold text-white">
               {formatINR(totalCommittedAndSpent, false)} / {formatINR(totalBudgetLimit, false)}
             </span>
           </div>
           <div
-            className={`px-2.5 py-1 rounded-lg text-xs font-semibold border ${
+            className={`px-3 py-1 rounded-xl text-xs font-bold border ${
               percentCommitted > 100
-                ? 'bg-rose-50 border-rose-200 text-rose-700'
+                ? 'bg-rose-500/15 border-rose-500/30 text-rose-300'
                 : percentCommitted > 85
-                ? 'bg-amber-50 border-amber-200 text-amber-700'
-                : 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                ? 'bg-amber-500/15 border-amber-500/30 text-amber-300'
+                : 'bg-emerald-500/15 border-emerald-500/30 text-emerald-400'
             }`}
           >
             {percentCommitted.toFixed(0)}% Committed
           </div>
           <button
             onClick={() => setShowAddCategory(true)}
-            className="p-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50"
+            className="p-2 rounded-xl bg-slate-900 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
             title="Add or Customize Category Budget"
           >
             <Plus className="w-4 h-4" />
@@ -123,44 +123,46 @@ export const BudgetManager: React.FC<BudgetManagerProps> = ({
 
       {/* Global Commitment Progress Bar */}
       {totalBudgetLimit > 0 ? (
-        <div className="my-4">
-          <div className="flex justify-between text-xs mb-1.5 font-medium">
-            <span className="text-slate-600 flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-xs bg-slate-800 inline-block"></span> Spent ({formatINR(totalSpent, false)}) +
-              <span className="w-2.5 h-2.5 rounded-xs bg-amber-500 inline-block ml-1"></span> Upcoming Bills (
-              {formatINR(totalCommitted, false)})
+        <div className="my-4 p-4 rounded-xl bg-slate-900/60 border border-slate-800/80">
+          <div className="flex justify-between text-xs mb-2 font-medium">
+            <span className="text-slate-300 flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-xs bg-emerald-500 inline-block" /> Spent ({formatINR(totalSpent, false)}) +
+              <span className="w-2.5 h-2.5 rounded-xs bg-amber-400 inline-block ml-1" /> Upcoming Obligations ({formatINR(totalCommitted, false)})
             </span>
-            <span className="text-slate-500">
-              Buffer:{' '}
-              <strong
-                className={totalBudgetLimit - totalCommittedAndSpent >= 0 ? 'text-emerald-600' : 'text-rose-600'}
-              >
+            <span className="text-slate-400">
+              Remaining Buffer:{' '}
+              <strong className={totalBudgetLimit - totalCommittedAndSpent >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
                 {formatINR(totalBudgetLimit - totalCommittedAndSpent, false)}
               </strong>
             </span>
           </div>
-          <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden flex">
+          <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden flex">
             <div
-              className="bg-slate-800 h-full transition-all duration-300"
+              className="bg-emerald-500 h-full transition-all duration-300"
               style={{ width: `${Math.min(100, (totalSpent / totalBudgetLimit) * 100)}%` }}
               title={`Spent: ${formatINR(totalSpent)}`}
             />
             <div
               className="bg-amber-400 h-full transition-all duration-300"
-              style={{ width: `${Math.min(100 - (totalSpent / totalBudgetLimit) * 100, (totalCommitted / totalBudgetLimit) * 100)}%` }}
+              style={{
+                width: `${Math.min(
+                  100 - (totalSpent / totalBudgetLimit) * 100,
+                  (totalCommitted / totalBudgetLimit) * 100
+                )}%`,
+              }}
               title={`Upcoming Obligations: ${formatINR(totalCommitted)}`}
             />
           </div>
         </div>
       ) : (
-        <div className="my-4 p-3 bg-slate-50 border border-dashed border-slate-200 rounded-xl text-center">
-          <p className="text-xs text-slate-500">
+        <div className="my-4 p-4 bg-slate-900/60 border border-dashed border-slate-800 rounded-xl text-center">
+          <p className="text-xs text-slate-400">
             Set your monthly budget limits in Rupees (₹) below to track commitments and cash flow buffer.
           </p>
         </div>
       )}
 
-      {/* Category Budget Items */}
+      {/* Category Budget Items Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 mt-4">
         {budgets.map((b) => {
           const totalCategoryLoad = b.spent + b.committedUpcoming;
@@ -172,17 +174,21 @@ export const BudgetManager: React.FC<BudgetManagerProps> = ({
           return (
             <div
               key={b.category}
-              className={`p-3 rounded-xl border transition-all ${
-                isOver ? 'bg-rose-50/40 border-rose-200' : isWarning ? 'bg-amber-50/30 border-amber-200' : 'bg-slate-50/40 border-slate-200/80'
+              className={`p-4 rounded-xl border transition-all ${
+                isOver
+                  ? 'bg-rose-500/5 border-rose-500/30'
+                  : isWarning
+                  ? 'bg-amber-500/5 border-amber-500/30'
+                  : 'bg-slate-900/50 border-slate-800'
               }`}
             >
-              <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <div
                     className="w-3 h-3 rounded-full shrink-0"
-                    style={{ backgroundColor: b.color || '#3b82f6' }}
+                    style={{ backgroundColor: b.color || '#10b981' }}
                   />
-                  <span className="text-xs font-bold text-slate-900">{b.category}</span>
+                  <span className="text-xs font-bold text-white">{b.category}</span>
                 </div>
 
                 {/* Limit & Edit */}
@@ -194,33 +200,33 @@ export const BudgetManager: React.FC<BudgetManagerProps> = ({
                         type="number"
                         value={editLimitValue}
                         onChange={(e) => setEditLimitValue(Number(e.target.value))}
-                        className="w-24 px-1.5 py-0.5 text-xs bg-white border border-slate-300 rounded-md font-semibold"
+                        className="w-24 px-2 py-1 text-xs bg-slate-800 border border-slate-700 text-white rounded-lg font-semibold focus:outline-hidden focus:border-emerald-500"
                         autoFocus
                       />
                       <button
                         onClick={saveEdit}
-                        className="p-1 rounded bg-emerald-600 text-white hover:bg-emerald-700"
+                        className="p-1 rounded-lg bg-emerald-500 text-slate-950 font-bold hover:bg-emerald-400"
                         title="Save limit"
                       >
-                        <Check className="w-3 h-3" />
+                        <Check className="w-3.5 h-3.5 stroke-[2.5]" />
                       </button>
                       <button
                         onClick={() => setEditingCategory(null)}
-                        className="p-1 rounded bg-slate-200 text-slate-700 hover:bg-slate-300"
+                        className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-white"
                         title="Cancel"
                       >
-                        <X className="w-3 h-3" />
+                        <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-1">
-                      <span className="text-slate-500 font-medium">
-                        Limit: <strong className="text-slate-800">{formatINR(b.monthlyLimit, false)}</strong>
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400">
+                        Limit: <strong className="text-white">{formatINR(b.monthlyLimit, false)}</strong>
                       </span>
                       <button
                         onClick={() => startEdit(b)}
-                        className="text-slate-400 hover:text-slate-700 p-0.5 rounded hover:bg-slate-200/50"
-                        title="Edit monthly budget limit"
+                        className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                        title="Edit monthly limit"
                       >
                         <Edit2 className="w-3 h-3" />
                       </button>
@@ -229,41 +235,32 @@ export const BudgetManager: React.FC<BudgetManagerProps> = ({
                 </div>
               </div>
 
-              {/* Progress meter */}
-              <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden flex my-2">
+              {/* Progress Bar for Category */}
+              <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden flex my-2">
                 <div
-                  className={`h-full ${isOver ? 'bg-rose-500' : 'bg-slate-800'}`}
-                  style={{ width: `${b.monthlyLimit > 0 ? Math.min(100, (b.spent / b.monthlyLimit) * 100) : 0}%` }}
+                  className={`h-full transition-all duration-300 ${isOver ? 'bg-rose-500' : 'bg-emerald-500'}`}
+                  style={{ width: `${Math.min(100, b.monthlyLimit > 0 ? (b.spent / b.monthlyLimit) * 100 : 0)}%` }}
                 />
-                {b.committedUpcoming > 0 && b.monthlyLimit > 0 && (
-                  <div
-                    className="h-full bg-amber-400"
-                    style={{
-                      width: `${Math.min(
-                        Math.max(0, 100 - (b.spent / b.monthlyLimit) * 100),
-                        (b.committedUpcoming / b.monthlyLimit) * 100
-                      )}%`,
-                    }}
-                  />
-                )}
+                <div
+                  className="bg-amber-400 h-full transition-all duration-300"
+                  style={{
+                    width: `${Math.min(
+                      100 - (b.monthlyLimit > 0 ? (b.spent / b.monthlyLimit) * 100 : 0),
+                      b.monthlyLimit > 0 ? (b.committedUpcoming / b.monthlyLimit) * 100 : 0
+                    )}%`,
+                  }}
+                />
               </div>
 
-              {/* Sub details */}
-              <div className="flex items-center justify-between text-[11px] text-slate-600 pt-0.5">
+              <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1">
                 <span>
-                  Spent: <strong>{formatINR(b.spent)}</strong>
+                  Spent: <strong className="text-slate-200">{formatINR(b.spent, false)}</strong>
                   {b.committedUpcoming > 0 && (
-                    <span className="text-amber-700 font-medium ml-1">
-                      (+{formatINR(b.committedUpcoming)} upcoming)
-                    </span>
+                    <span className="ml-1 text-amber-300">+ {formatINR(b.committedUpcoming, false)} bills</span>
                   )}
                 </span>
-                <span className={isOver ? 'text-rose-600 font-bold' : isWarning ? 'text-amber-700 font-semibold' : 'text-slate-500 font-medium'}>
-                  {b.monthlyLimit <= 0
-                    ? 'No limit set'
-                    : isOver
-                    ? `Over by ${formatINR(totalCategoryLoad - b.monthlyLimit)}`
-                    : `${formatINR(b.monthlyLimit - totalCategoryLoad)} remaining`}
+                <span className={isOver ? 'text-rose-400 font-bold' : isWarning ? 'text-amber-400 font-bold' : 'text-slate-400'}>
+                  {pct.toFixed(0)}%
                 </span>
               </div>
             </div>
@@ -271,50 +268,60 @@ export const BudgetManager: React.FC<BudgetManagerProps> = ({
         })}
       </div>
 
-      {/* Add Custom Category Budget Modal */}
+      {/* Add Category Modal */}
       {showAddCategory && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-xl border border-slate-200 text-xs">
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="font-bold text-slate-900">Set Category Budget Limit</h3>
-              <button onClick={() => setShowAddCategory(false)} className="text-slate-400 hover:text-slate-600">✕</button>
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="bg-[#111827] rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-slate-800 text-slate-200">
+            <div className="flex justify-between items-center pb-3 border-b border-slate-800 mb-4">
+              <h3 className="text-sm font-bold text-white">Add Category Budget</h3>
+              <button
+                onClick={() => setShowAddCategory(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
-            <form onSubmit={handleCreateCategory} className="space-y-3">
+
+            <form onSubmit={handleCreateCategory} className="space-y-4 text-xs">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Category</label>
+                <label className="block font-semibold text-slate-300 mb-1">Category</label>
                 <select
                   value={newCategoryName}
                   onChange={(e) => setNewCategoryName(e.target.value as Category)}
-                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg"
+                  className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-white focus:outline-hidden focus:border-emerald-500"
                 >
                   {AVAILABLE_CATEGORIES.map((c) => (
-                    <option key={c} value={c}>{c}</option>
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
                   ))}
                 </select>
               </div>
+
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Monthly Limit (₹)</label>
+                <label className="block font-semibold text-slate-300 mb-1">Monthly Limit (₹)</label>
                 <input
                   type="number"
-                  required
-                  min="500"
                   step="500"
+                  min="0"
+                  required
                   value={newCategoryLimit}
                   onChange={(e) => setNewCategoryLimit(Number(e.target.value))}
-                  className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg"
+                  className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-white focus:outline-hidden focus:border-emerald-500"
                 />
               </div>
-              <div className="flex justify-end gap-2 pt-2">
+
+              <div className="flex justify-end gap-2.5 pt-3 border-t border-slate-800">
                 <button
                   type="button"
                   onClick={() => setShowAddCategory(false)}
-                  className="px-3 py-1.5 border border-slate-200 rounded-lg text-slate-600"
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-3 py-1.5 bg-slate-900 text-white font-semibold rounded-lg hover:bg-slate-800"
+                  className="px-4 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold"
                 >
                   Save Budget
                 </button>
