@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   FileSpreadsheet,
   UploadCloud,
@@ -59,6 +59,68 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const [ppBusy, setPpBusy] = useState(false);
   const [ppError, setPpError] = useState<string | null>(null);
   const [ppSuccess, setPpSuccess] = useState<string | null>(null);
+
+  const [geminiConnected, setGeminiConnected] = useState(false);
+  const [geminiSource, setGeminiSource] = useState<'env' | 'session' | 'none'>('none');
+  const [geminiKeyInput, setGeminiKeyInput] = useState('');
+  const [geminiBusy, setGeminiBusy] = useState(false);
+  const [geminiError, setGeminiError] = useState<string | null>(null);
+  const [geminiSuccess, setGeminiSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/health')
+      .then((r) => r.json())
+      .then((data) => {
+        setGeminiConnected(Boolean(data?.hasGeminiKey));
+        setGeminiSource(data?.geminiSource || (data?.hasGeminiKey ? 'env' : 'none'));
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleConnectGemini = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!geminiKeyInput.trim() || geminiBusy) return;
+    setGeminiBusy(true);
+    setGeminiError(null);
+    setGeminiSuccess(null);
+    try {
+      const res = await fetch('/api/gemini/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey: geminiKeyInput.trim() }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Gemini API verification failed');
+      }
+      setGeminiConnected(true);
+      setGeminiSource(data.geminiSource || 'session');
+      setGeminiKeyInput('');
+      setGeminiSuccess('Gemini API verified & live across AI Assistant, Guardrails, and Sync.');
+    } catch (err: any) {
+      setGeminiError(err.message || 'Failed to verify Gemini API key');
+    } finally {
+      setGeminiBusy(false);
+    }
+  };
+
+  const handleDisconnectGemini = async () => {
+    if (geminiBusy) return;
+    setGeminiBusy(true);
+    setGeminiError(null);
+    setGeminiSuccess(null);
+    try {
+      const res = await fetch('/api/gemini/disconnect', { method: 'POST' });
+      const data = await res.json().catch(() => ({}));
+      setGeminiConnected(Boolean(data.hasGeminiKey));
+      setGeminiSource(data.geminiSource || 'none');
+      setGeminiSuccess('Session Gemini API key cleared.');
+    } catch (err: any) {
+      setGeminiError(err.message || 'Failed to clear Gemini session key');
+    } finally {
+      setGeminiBusy(false);
+    }
+  };
 
   const handleConnectPayPal = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -379,30 +441,110 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
       {/* 2. AI Intelligence Engine Configuration */}
       <div className="rounded-2xl bg-[#111827] border border-slate-800 p-6 space-y-4">
-        <div className="flex items-center gap-2.5 pb-3 border-b border-slate-800">
-          <div className="w-8 h-8 rounded-xl bg-indigo-500/15 text-indigo-400 flex items-center justify-center border border-indigo-500/30">
-            <Cpu className="w-4 h-4" />
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-indigo-500/15 text-indigo-400 flex items-center justify-center border border-indigo-500/30">
+              <Cpu className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-bold text-white">AI Engine & Decision Support Model</h2>
+                <span
+                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    geminiConnected
+                      ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30'
+                      : 'bg-amber-500/15 text-amber-300 border-amber-500/30'
+                  }`}
+                >
+                  {geminiConnected ? `Live (${geminiSource})` : 'Fallback Mode (Key Needed)'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">Gemini 3.8 Flash with deterministic local fallback</p>
+            </div>
           </div>
-          <div>
-            <h2 className="text-sm font-bold text-white">AI Engine & Decision Support Model</h2>
-            <p className="text-xs text-slate-400">Gemini 3.8 Flash with high-resilience fallback</p>
-          </div>
+
+          <a
+            href="https://aistudio.google.com/apikey"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-400 hover:underline"
+          >
+            <span>Get Free Gemini API Key</span>
+            <ExternalLink className="w-3 h-3" />
+          </a>
         </div>
+
+        {geminiError && (
+          <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-300 flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+            <span>{geminiError}</span>
+          </div>
+        )}
+        {geminiSuccess && (
+          <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-300 flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+            <span>{geminiSuccess}</span>
+          </div>
+        )}
+
+        <form
+          onSubmit={handleConnectGemini}
+          className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-3"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-end gap-2.5">
+            <div className="flex-1">
+              <label className="block text-[11px] font-semibold text-slate-300 mb-1">
+                Google Gemini API Key (stored server-side only)
+              </label>
+              <input
+                type="password"
+                value={geminiKeyInput}
+                onChange={(e) => setGeminiKeyInput(e.target.value)}
+                placeholder={geminiConnected ? '•••••••• (Live key active)' : 'AIza... (from Google AI Studio)'}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white placeholder:text-slate-600 focus:outline-hidden focus:border-indigo-400"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="submit"
+                disabled={geminiBusy || !geminiKeyInput.trim()}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-xs font-bold bg-indigo-500 hover:bg-indigo-400 text-white disabled:opacity-50 transition-all cursor-pointer"
+              >
+                {geminiBusy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <Key className="w-3.5 h-3.5" />
+                <span>Verify & Enable Gemini</span>
+              </button>
+              {geminiConnected && geminiSource === 'session' && (
+                <button
+                  type="button"
+                  onClick={handleDisconnectGemini}
+                  disabled={geminiBusy}
+                  className="inline-flex items-center gap-1 px-2.5 py-2 rounded-lg text-xs font-semibold bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/30 cursor-pointer"
+                >
+                  <Link2Off className="w-3 h-3" />
+                  <span>Clear</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </form>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 text-xs space-y-1">
             <span className="text-slate-400 block text-[11px]">Primary Model</span>
             <span className="font-bold text-white block">Gemini 3.8 Flash</span>
-            <span className="text-[10px] text-emerald-400">Resilient failover active</span>
+            <span className="text-[10px] text-emerald-400">
+              {geminiConnected ? 'Live API Active' : 'Local fallback until key set'}
+            </span>
           </div>
 
           <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 text-xs space-y-1">
-            <span className="text-slate-400 block text-[11px]">Currency Standardization</span>
+            <span className="text-slate-400 block text-[11px]">Currency Handling</span>
             <span className="font-bold text-white block flex items-center gap-1">
               <IndianRupee className="w-3.5 h-3.5 text-emerald-400" />
-              INR (₹) Only
+              INR (₹) + USD Bridge
             </span>
-            <span className="text-[10px] text-slate-400">Strict zero-USD policy</span>
+            <span className="text-[10px] text-slate-400">Ledger in ₹; PayPal Sandbox in USD</span>
           </div>
 
           <div className="p-3.5 rounded-xl bg-slate-900/60 border border-slate-800 text-xs space-y-1">

@@ -22,11 +22,17 @@ import {
 dotenv.config();
 
 let aiClient: GoogleGenAI | null = null;
+let runtimeGeminiKey: string | null = null;
+
+function getEffectiveGeminiKey(): string | null {
+  return runtimeGeminiKey || process.env.GEMINI_API_KEY?.trim() || null;
+}
 
 function getGeminiClient(): GoogleGenAI | null {
-  if (!aiClient && process.env.GEMINI_API_KEY) {
+  const apiKey = getEffectiveGeminiKey();
+  if (!aiClient && apiKey) {
     aiClient = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY,
+      apiKey,
       httpOptions: {
         headers: {
           'User-Agent': 'aistudio-build',
@@ -108,9 +114,15 @@ async function startServer() {
   // 1. Health check
   app.get('/api/health', async (req, res) => {
     const ppStatus = await getPayPalStatus().catch(() => null);
+    const activeGeminiKey = getEffectiveGeminiKey();
     res.json({
       status: 'ok',
-      hasGeminiKey: Boolean(process.env.GEMINI_API_KEY),
+      hasGeminiKey: Boolean(activeGeminiKey),
+      geminiSource: runtimeGeminiKey
+        ? 'session'
+        : process.env.GEMINI_API_KEY?.trim()
+        ? 'env'
+        : 'none',
       paypalSandboxConnected: Boolean(ppStatus?.connected),
       currency: 'INR (₹)',
       timestamp: new Date().toISOString(),
@@ -495,6 +507,54 @@ Return JSON with this schema:
     } catch (err: any) {
       res.status(500).json({ error: 'Failed to analyze goals' });
     }
+  });
+
+  // 5b. Runtime Gemini API Key Verification & Activation
+  app.post('/api/gemini/connect', async (req, res) => {
+    try {
+      const apiKey = typeof req.body?.apiKey === 'string' ? req.body.apiKey.trim() : '';
+      if (!apiKey) {
+        res.status(400).json({ error: 'A valid Gemini API key is required.' });
+        return;
+      }
+
+      const testClient = new GoogleGenAI({
+        apiKey,
+        httpOptions: {
+          headers: {
+            'User-Agent': 'aistudio-build',
+          },
+        },
+      });
+
+      await callGeminiWithResilience(testClient, {
+        primaryModel: 'gemini-3.8-flash',
+        contents: 'Reply with OK.',
+        config: { temperature: 0 },
+      });
+
+      runtimeGeminiKey = apiKey;
+      aiClient = testClient;
+
+      res.json({
+        hasGeminiKey: true,
+        geminiSource: 'session',
+      });
+    } catch (err: any) {
+      res.status(401).json({
+        error: err?.message || 'Gemini API key verification failed. Check your key at aistudio.google.com.',
+      });
+    }
+  });
+
+  app.post('/api/gemini/disconnect', (req, res) => {
+    runtimeGeminiKey = null;
+    aiClient = null;
+    const envHasKey = Boolean(process.env.GEMINI_API_KEY?.trim());
+    res.json({
+      hasGeminiKey: envHasKey,
+      geminiSource: envHasKey ? 'env' : 'none',
+    });
   });
 
   // =========================================================================
