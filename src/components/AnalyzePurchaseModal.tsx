@@ -1,13 +1,24 @@
 import React, { useState } from 'react';
 import { X, Search, Sparkles, CheckCircle2, AlertTriangle, AlertCircle, ArrowRight, IndianRupee, Bot } from 'lucide-react';
-import { FinancialContextSnapshot, Category } from '../types';
+import {
+  FinancialContextSnapshot,
+  Category,
+  PayPalStatusResponse,
+  PayPalOrderRecord,
+  PayPalApiLogEntry,
+} from '../types';
 import { formatINR } from '../utils/currency';
+import { PayPalCheckoutAction } from './PayPalCheckoutAction';
 
 interface AnalyzePurchaseModalProps {
   isOpen: boolean;
   onClose: () => void;
   financialContext: FinancialContextSnapshot;
   onNavigateToAssistant: (initialPrompt?: string) => void;
+  paypalStatus: PayPalStatusResponse | null;
+  onOrderActivity?: (orders: PayPalOrderRecord[], logs: PayPalApiLogEntry[]) => void;
+  onPaymentCaptured: (capturedOrder: PayPalOrderRecord) => void;
+  onOpenPayPalSettings: () => void;
 }
 
 export const AnalyzePurchaseModal: React.FC<AnalyzePurchaseModalProps> = ({
@@ -15,6 +26,10 @@ export const AnalyzePurchaseModal: React.FC<AnalyzePurchaseModalProps> = ({
   onClose,
   financialContext,
   onNavigateToAssistant,
+  paypalStatus,
+  onOrderActivity,
+  onPaymentCaptured,
+  onOpenPayPalSettings,
 }) => {
   const [itemName, setItemName] = useState('');
   const [cost, setCost] = useState<number | ''>('');
@@ -103,7 +118,7 @@ export const AnalyzePurchaseModal: React.FC<AnalyzePurchaseModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-[#111827] border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative text-slate-200">
+      <div className="bg-[#111827] border border-slate-800 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl relative text-slate-200">
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-slate-800">
           <div className="flex items-center gap-2.5">
@@ -221,6 +236,25 @@ export const AnalyzePurchaseModal: React.FC<AnalyzePurchaseModalProps> = ({
                 {aiVerdict}
               </p>
             </div>
+          )}
+
+          {/* PayPal Sandbox AI-Guarded Execution */}
+          {itemName.trim() && costNum > 0 && (
+            <PayPalCheckoutAction
+              title={itemName.trim()}
+              amountINR={costNum}
+              category={category}
+              purpose="purchase"
+              aiVerdict={instantAffordability}
+              aiReasoning={aiVerdict || instantMessage}
+              paypalStatus={paypalStatus}
+              onOrderActivity={onOrderActivity}
+              onPaymentCaptured={onPaymentCaptured}
+              onOpenPayPalSettings={() => {
+                onClose();
+                onOpenPayPalSettings();
+              }}
+            />
           )}
         </div>
 

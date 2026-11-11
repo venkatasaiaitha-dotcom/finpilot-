@@ -13,6 +13,7 @@ import {
   IndianRupee,
   X,
   FileSpreadsheet,
+  CreditCard,
 } from 'lucide-react';
 import { NavigationTab } from '../types';
 import { User } from 'firebase/auth';
@@ -27,6 +28,7 @@ interface SidebarProps {
   onCloseMobile: () => void;
   currentUser: User | null;
   onOpenGoogleSheets: () => void;
+  paypalConnected?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -39,6 +41,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onCloseMobile,
   currentUser,
   onOpenGoogleSheets,
+  paypalConnected = false,
 }) => {
   const navItems = [
     {
@@ -53,6 +56,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: Bot,
       badge: 'Gemini 3.8',
       badgeColor: 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20',
+    },
+    {
+      id: 'paypal' as NavigationTab,
+      label: 'PayPal Hub',
+      icon: CreditCard,
+      badge: paypalConnected ? 'Sandbox' : 'Setup',
+      badgeColor: paypalConnected
+        ? 'bg-[#0070ba]/20 text-[#38bdf8] border border-[#0070ba]/40'
+        : 'bg-slate-800 text-slate-400 border border-slate-700',
     },
     {
       id: 'transactions' as NavigationTab,

@@ -7,6 +7,7 @@ import {
   ShieldAlert,
   Search,
   Calendar,
+  CreditCard,
 } from 'lucide-react';
 import { NavigationTab } from '../types';
 
@@ -20,6 +21,8 @@ interface HeaderProps {
   onAnalyzePurchase: () => void;
   unresolvedAnomaliesCount: number;
   onNavigateToAlerts: () => void;
+  paypalConnected?: boolean;
+  onNavigateToPayPal?: () => void;
 }
 
 const TAB_TITLES: Record<NavigationTab, { title: string; subtitle: string }> = {
@@ -30,6 +33,10 @@ const TAB_TITLES: Record<NavigationTab, { title: string; subtitle: string }> = {
   assistant: {
     title: 'AI Decision Assistant',
     subtitle: 'Gemini-powered personal finance copilot in INR',
+  },
+  paypal: {
+    title: 'PayPal Sandbox Hub',
+    subtitle: 'AI-guarded checkout, goal funding, subscriptions & wallet sync',
   },
   transactions: {
     title: 'Transactions & Ledger',
@@ -67,6 +74,8 @@ export const Header: React.FC<HeaderProps> = ({
   onAnalyzePurchase,
   unresolvedAnomaliesCount,
   onNavigateToAlerts,
+  paypalConnected = false,
+  onNavigateToPayPal,
 }) => {
   const currentTabInfo = TAB_TITLES[activeTab] || {
     title: 'FinPilot',
@@ -104,6 +113,26 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* Right: Quick Action Buttons */}
         <div className="flex items-center gap-2 shrink-0">
+          {/* PayPal Sandbox Status Pill */}
+          {onNavigateToPayPal && (
+            <button
+              onClick={onNavigateToPayPal}
+              className={`hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                paypalConnected
+                  ? 'bg-[#0070ba]/15 text-[#38bdf8] border-[#0070ba]/40 hover:bg-[#0070ba]/25'
+                  : 'bg-slate-900 text-slate-400 border-slate-700/70 hover:text-slate-200 hover:bg-slate-800'
+              }`}
+              title={
+                paypalConnected
+                  ? 'PayPal Sandbox OAuth Connected'
+                  : 'Configure PayPal Developer Sandbox'
+              }
+            >
+              <CreditCard className="w-3.5 h-3.5" />
+              <span>{paypalConnected ? 'PayPal Live' : 'Connect PayPal'}</span>
+            </button>
+          )}
+
           {/* Anomaly Badge Alert Button */}
           {unresolvedAnomaliesCount > 0 && (
             <button

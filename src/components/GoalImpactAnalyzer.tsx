@@ -1,13 +1,23 @@
 import React, { useState } from 'react';
-import { FinancialGoal } from '../types';
-import { Target, Sparkles, Plus, Sliders, X } from 'lucide-react';
+import {
+  FinancialGoal,
+  PayPalStatusResponse,
+  PayPalOrderRecord,
+  PayPalApiLogEntry,
+} from '../types';
+import { Target, Sparkles, Plus, Sliders, X, CreditCard } from 'lucide-react';
 import { formatINR } from '../utils/currency';
+import { PayPalCheckoutAction } from './PayPalCheckoutAction';
 
 interface GoalImpactAnalyzerProps {
   goals: FinancialGoal[];
   onAddGoal: (goal: FinancialGoal) => void;
   monthlyDiscretionarySpend: number;
   netSavings: number;
+  paypalStatus: PayPalStatusResponse | null;
+  onOrderActivity?: (orders: PayPalOrderRecord[], logs: PayPalApiLogEntry[]) => void;
+  onPaymentCaptured: (capturedOrder: PayPalOrderRecord) => void;
+  onOpenPayPalSettings: () => void;
 }
 
 export const GoalImpactAnalyzer: React.FC<GoalImpactAnalyzerProps> = ({
@@ -15,8 +25,14 @@ export const GoalImpactAnalyzer: React.FC<GoalImpactAnalyzerProps> = ({
   onAddGoal,
   monthlyDiscretionarySpend,
   netSavings,
+  paypalStatus,
+  onOrderActivity,
+  onPaymentCaptured,
+  onOpenPayPalSettings,
 }) => {
   const [showAddModal, setShowAddModal] = useState(false);
+  const [fundingGoal, setFundingGoal] = useState<FinancialGoal | null>(null);
+  const [fundAmountINR, setFundAmountINR] = useState<number>(2500);
   const [newGoalName, setNewGoalName] = useState('');
   const [newGoalTarget, setNewGoalTarget] = useState<number>(100000);
   const [newGoalCurrent, setNewGoalCurrent] = useState<number>(20000);
@@ -168,6 +184,26 @@ export const GoalImpactAnalyzer: React.FC<GoalImpactAnalyzerProps> = ({
                       ~{baselineMonthsNeeded} months remaining to target date.
                     </div>
                   )}
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFundingGoal(goal);
+                      setFundAmountINR(
+                        Math.max(
+                          500,
+                          Math.min(
+                            remainingAmount > 0 ? remainingAmount : goal.monthlyContribution || 2500,
+                            goal.monthlyContribution || 2500
+                          )
+                        )
+                      );
+                    }}
+                    className="mt-3 w-full py-2 px-3 rounded-lg text-[11px] font-bold bg-[#0070ba]/15 hover:bg-[#0070ba]/25 text-[#38bdf8] border border-[#0070ba]/30 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <CreditCard className="w-3.5 h-3.5" />
+                    <span>Fund Goal via PayPal</span>
+                  </button>
                 </div>
               </div>
             );
@@ -337,6 +373,81 @@ export const GoalImpactAnalyzer: React.FC<GoalImpactAnalyzerProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* PayPal Goal Vault Funding Modal */}
+      {fundingGoal && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#111827] border border-slate-800 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div>
+                <h3 className="text-base font-bold text-white">
+                  Fund Goal: {fundingGoal.name}
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Deposit toward target via PayPal Sandbox & auto-update FinPilot progress
+                </p>
+              </div>
+              <button
+                onClick={() => setFundingGoal(null)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                Contribution Amount (₹)
+              </label>
+              <input
+                type="number"
+                min="100"
+                step="100"
+                value={fundAmountINR}
+                onChange={(e) => setFundAmountINR(Number(e.target.value) || 0)}
+                className="w-full px-3.5 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-hidden focus:border-[#38bdf8]"
+              />
+            </div>
+
+            {fundAmountINR > 0 && (
+              <PayPalCheckoutAction
+                title={`Goal Funding: ${fundingGoal.name}`}
+                amountINR={fundAmountINR}
+                category="Financial & Savings"
+                purpose="goal_funding"
+                goalId={fundingGoal.id}
+                aiVerdict={
+                  fundAmountINR <= Math.max(0, netSavings)
+                    ? 'healthy'
+                    : netSavings > 0
+                    ? 'caution'
+                    : 'stretched'
+                }
+                aiReasoning={`Current monthly net savings: ${formatINR(
+                  netSavings
+                )}. Deposit advances "${fundingGoal.name}" from ${Math.min(
+                  100,
+                  Math.round((fundingGoal.currentAmount / fundingGoal.targetAmount) * 100)
+                )}% toward ${Math.min(
+                  100,
+                  Math.round(
+                    ((fundingGoal.currentAmount + fundAmountINR) / fundingGoal.targetAmount) * 100
+                  )
+                )}%.`}
+                paypalStatus={paypalStatus}
+                onOrderActivity={onOrderActivity}
+                onPaymentCaptured={(capturedOrder) => {
+                  onPaymentCaptured(capturedOrder);
+                }}
+                onOpenPayPalSettings={() => {
+                  setFundingGoal(null);
+                  onOpenPayPalSettings();
+                }}
+              />
+            )}
           </div>
         </div>
       )}

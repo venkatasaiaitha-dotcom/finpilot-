@@ -12,6 +12,7 @@ import {
   Calendar,
   Layers,
   Repeat,
+  CreditCard,
 } from 'lucide-react';
 import { Transaction, FinancialContextSnapshot, NavigationTab } from '../../types';
 import { formatINR } from '../../utils/currency';
@@ -85,12 +86,28 @@ export const OverviewView: React.FC<OverviewViewProps> = ({
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-[#111c2e] via-[#0f172a] to-[#0d131f] border border-slate-800 p-5 sm:p-6 shadow-xl">
         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-5">
           <div className="space-y-2 max-w-2xl">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                 <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
                 FinPilot AI Snapshot
               </span>
               <span className="text-xs text-slate-400">• {financialContext.currentMonth}</span>
+              <button
+                type="button"
+                onClick={() => onNavigateToTab('paypal')}
+                className={`inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-0.5 rounded-full border transition-colors cursor-pointer ${
+                  financialContext.paypalContext?.connected
+                    ? 'bg-[#0070ba]/15 text-[#38bdf8] border-[#0070ba]/30 hover:bg-[#0070ba]/25'
+                    : 'bg-slate-900 text-slate-400 border-slate-700 hover:text-slate-200'
+                }`}
+              >
+                <CreditCard className="w-3 h-3" />
+                <span>
+                  {financialContext.paypalContext?.connected
+                    ? `PayPal Sandbox Live (${financialContext.paypalContext.capturedOrdersCount} orders)`
+                    : 'PayPal Sandbox Hub'}
+                </span>
+              </button>
             </div>
             <p className="text-sm sm:text-base text-slate-200 font-medium leading-relaxed">
               {insightText}

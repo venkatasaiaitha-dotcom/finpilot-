@@ -9,6 +9,7 @@ interface AgentChatProps {
 
 const DEFAULT_QUICK_QUESTIONS = [
   'Can I afford a ₹15,000 purchase next week?',
+  'Evaluate my PayPal Sandbox orders & subscription spending',
   'Where did I spend the most this month?',
   'Which subscriptions am I paying for?',
   'How much of my budget is already committed?',

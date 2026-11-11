@@ -2,6 +2,22 @@ import express from 'express';
 import path from 'path';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
+import {
+  captureSandboxOrder,
+  cancelSandboxSubscription,
+  connectSandboxCredentials,
+  createSandboxOrder,
+  createSandboxSubscription,
+  disconnectSandbox,
+  getInrPerUsd,
+  getPayPalStatus,
+  getSandboxOrderDetails,
+  getTrackedPayPalData,
+  refreshSandboxSubscription,
+  setInrPerUsd,
+  syncSandboxReporting,
+  terminateAndRefreshToken,
+} from './server/paypalService';
 
 dotenv.config();
 
@@ -90,10 +106,12 @@ async function startServer() {
   app.use(express.json({ limit: '15mb' }));
 
   // 1. Health check
-  app.get('/api/health', (req, res) => {
+  app.get('/api/health', async (req, res) => {
+    const ppStatus = await getPayPalStatus().catch(() => null);
     res.json({
       status: 'ok',
       hasGeminiKey: Boolean(process.env.GEMINI_API_KEY),
+      paypalSandboxConnected: Boolean(ppStatus?.connected),
       currency: 'INR (₹)',
       timestamp: new Date().toISOString(),
     });
@@ -111,11 +129,11 @@ async function startServer() {
 
       const client = getGeminiClient();
 
-      // System context summarizing financial snapshot in Indian Rupees
+      // System context summarizing financial snapshot in Indian Rupees + PayPal Sandbox status
       const contextSummary = financialContext
         ? `
 CURRENT USER FINANCIAL SNAPSHOT (${financialContext.currentMonth || 'Current Month'}):
-- Currency: Indian Rupees (INR, ₹)
+- Primary Ledger Currency: Indian Rupees (INR, ₹)
 - Total Monthly Income: ${formatINR(financialContext.totalIncome)}
 - Total Month-to-Date Expenses: ${formatINR(financialContext.totalExpenses)}
 - Net Cash Flow / Savings: ${formatINR(financialContext.netSavings)} (${(Number(financialContext.savingsRate || 0) * 100).toFixed(1)}% savings rate)
@@ -125,31 +143,25 @@ CURRENT USER FINANCIAL SNAPSHOT (${financialContext.currentMonth || 'Current Mon
 - Top Expense Categories: ${JSON.stringify(financialContext.topExpenseCategories || [])}
 - Budget Commitment Status: ${JSON.stringify(financialContext.budgetCommitment || {})}
 - Active Financial Goals: ${JSON.stringify(financialContext.goalsProgress || [])}
+- PayPal Sandbox Integration: ${JSON.stringify(financialContext.paypalContext || { connected: false })}
 `
         : 'No specific financial snapshot provided. Currency is Indian Rupees (₹). Use standard personal finance decision support principles.';
 
       const systemInstruction = `
-You are FinPilot, an AI-powered Personal Finance Decision Support Agent.
-Your role: Help users understand where their money is going, anticipate upcoming obligations, identify recurring subscriptions, detect unusual spending anomalies, compare spending against budgets, and analyze goal impact.
+You are FinPilot, an AI-powered Personal Finance Decision Support & PayPal Guardrail Agent.
+Your role: Help users understand where their money is going, anticipate upcoming obligations, identify recurring subscriptions, detect unusual spending anomalies, compare spending against budgets, analyze goal impact, and advise whether a PayPal Checkout purchase or PayPal Goal Contribution is financially safe.
 
 CRITICAL CURRENCY INSTRUCTION:
-- ALL financial amounts and monetary figures MUST be in Indian Rupees (₹).
-- Never use dollar signs ($) or USD terminology.
-- Always use the Indian Rupee symbol (₹) and Indian number formatting (e.g., ₹12,000, ₹1,50,000, ₹4,200).
+- Present primary personal finance metrics in Indian Rupees (₹) with Indian number formatting (e.g., ₹12,000, ₹1,50,000, ₹4,200).
+- When discussing PayPal Sandbox orders, wallet balances, or USD-denominated settlements, show the Indian Rupee (₹) figure alongside its PayPal USD conversion (e.g., ₹8,450 ($100.00 USD)).
 
 RULES & TONE:
-1. Ground your answers directly in the provided financial snapshot data. Cite specific merchant names, exact Rupee figures (₹), percentages, and dates.
+1. Ground your answers directly in the provided financial snapshot data. Cite specific merchant names, exact Rupee figures (₹), percentages, dates, and PayPal Sandbox integration state if relevant.
 2. Structure your response clearly using Markdown: bold metrics, clean bullet points, and an explicit "Key Takeaway" or "Recommended Action".
-3. When asked about subscriptions, list them with monthly amounts in ₹, upcoming renewal dates, and highlight any price changes or duplicates.
+3. When asked about subscriptions, list them with monthly amounts in ₹, upcoming renewal dates, and highlight any price changes, duplicates, or PayPal recurring plans.
 4. When asked about budget commitment, explain how much is already spent + committed to upcoming recurring bills, and calculate the true remaining discretionary buffer in ₹.
-5. Answer questions like:
-   - "Where did I spend the most this month?"
-   - "Which subscriptions am I paying for?"
-   - "Can I afford a ₹15,000 purchase next week?"
-   - "How much of my budget is already committed?"
-   - "How can I hit my emergency fund goal faster?"
-6. Never make up fake financial transactions that contradict the snapshot.
-7. Tone: Objective, empowering, clear, analytical, and supportive. Maintain the disclaimer that you are an analytical decision support agent, not a certified fiduciary or legal advisor.
+5. Never make up fake financial transactions or pretend a PayPal payment occurred if not reflected in the snapshot.
+6. Tone: Objective, empowering, clear, analytical, and supportive. Maintain the disclaimer that you are an analytical decision support agent, not a certified fiduciary or legal advisor.
 `;
 
       if (client) {
@@ -482,6 +494,330 @@ Return JSON with this schema:
       });
     } catch (err: any) {
       res.status(500).json({ error: 'Failed to analyze goals' });
+    }
+  });
+
+  // =========================================================================
+  // 6. PayPal Developer Sandbox REST API Integration Routes
+  // =========================================================================
+
+  // 6a. Get PayPal Sandbox status & live session telemetry (never returns secret)
+  app.get('/api/paypal/status', async (req, res) => {
+    try {
+      const status = await getPayPalStatus();
+      const tracked = getTrackedPayPalData();
+      res.json({
+        ...status,
+        ...tracked,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Failed to get PayPal status' });
+    }
+  });
+
+  // 6b. Connect & verify PayPal Sandbox credentials via real OAuth 2.0
+  app.post('/api/paypal/connect', async (req, res) => {
+    try {
+      const { clientId, clientSecret, inrPerUsd } = req.body || {};
+      if (!clientId || !clientSecret) {
+        res.status(400).json({ error: 'Both PayPal Sandbox Client ID and Client Secret are required.' });
+        return;
+      }
+
+      const status = await connectSandboxCredentials(clientId, clientSecret, Number(inrPerUsd) || undefined);
+      const tracked = getTrackedPayPalData();
+      res.json({ ...status, ...tracked });
+    } catch (err: any) {
+      res.status(401).json({
+        error: err.message || 'PayPal Sandbox OAuth verification failed. Verify your Client ID and Secret.',
+      });
+    }
+  });
+
+  // 6c. Disconnect active runtime PayPal Sandbox session
+  app.post('/api/paypal/disconnect', (req, res) => {
+    disconnectSandbox();
+    res.json({
+      connected: false,
+      mode: 'sandbox',
+      clientId: null,
+      source: 'none',
+      inrPerUsd: getInrPerUsd(),
+      ...getTrackedPayPalData(),
+    });
+  });
+
+  // 6d. Terminate and refresh PayPal OAuth token (helpful after enabling Transaction Search in dashboard)
+  app.post('/api/paypal/refresh-token', async (req, res) => {
+    try {
+      const status = await terminateAndRefreshToken();
+      res.json({ ...status, ...getTrackedPayPalData() });
+    } catch (err: any) {
+      res.status(400).json({ error: err.message || 'Failed to refresh PayPal token' });
+    }
+  });
+
+  // 6e. Update INR <-> USD exchange rate used for PayPal Sandbox conversions
+  app.post('/api/paypal/rate', (req, res) => {
+    const updated = setInrPerUsd(Number(req.body?.inrPerUsd));
+    res.json({ inrPerUsd: updated });
+  });
+
+  // 6f. AI Guardrail check before creating a PayPal Order
+  app.post('/api/paypal/guardrail', async (req, res) => {
+    try {
+      const { itemName, amountINR, category, purpose = 'purchase', financialContext } = req.body || {};
+      const cost = Number(amountINR) || 0;
+      const buffer = Number(financialContext?.budgetCommitment?.unallocatedBuffer || 0);
+      const netSavings = Number(financialContext?.netSavings || 0);
+      const upcomingBills = Number(financialContext?.upcomingBillsNext14Days || 0);
+
+      let verdict: 'healthy' | 'caution' | 'stretched' = 'healthy';
+      if (cost > buffer) {
+        verdict = 'stretched';
+      } else if (cost > buffer * 0.5 || cost > netSavings) {
+        verdict = 'caution';
+      }
+
+      const client = getGeminiClient();
+      let reasoning =
+        verdict === 'healthy'
+          ? `Safe to execute via PayPal: ${formatINR(cost)} fits comfortably within your ${formatINR(buffer)} unallocated buffer while keeping ${formatINR(upcomingBills)} in upcoming bills covered.`
+          : verdict === 'caution'
+          ? `Proceed with caution: ${formatINR(cost)} consumes ${buffer > 0 ? Math.round((cost / buffer) * 100) : 100}% of your remaining monthly buffer (${formatINR(buffer)}).`
+          : `Budget Guardrail Alert: ${formatINR(cost)} exceeds your unallocated buffer (${formatINR(buffer)}) by ${formatINR(Math.max(0, cost - buffer))}. Consider deferring or adjusting goals first.`;
+
+      if (client && financialContext) {
+        try {
+          const prompt = `
+You are FinPilot's AI Purchase Guardrail evaluating a proposed PayPal Sandbox ${purpose === 'goal_funding' ? 'Goal Contribution' : 'Checkout Purchase'}.
+Item / Purpose: "${itemName}"
+Category: ${category}
+Amount: ${formatINR(cost)} (approx $${(cost / getInrPerUsd()).toFixed(2)} USD in PayPal)
+User Financial Snapshot:
+- Net Monthly Savings: ${formatINR(netSavings)}
+- Unallocated Buffer: ${formatINR(buffer)}
+- Upcoming Bills (14d): ${formatINR(upcomingBills)}
+- Goals: ${JSON.stringify(financialContext.goalsProgress || [])}
+
+Return ONLY valid JSON:
+{
+  "verdict": "healthy" | "caution" | "stretched",
+  "reasoning": "Concise 2-sentence analytical explanation citing exact ₹ amounts and goal/buffer impact.",
+  "recommendedAction": "Short action recommendation (under 15 words)."
+}`;
+          const response = await callGeminiWithResilience(client, {
+            primaryModel: 'gemini-3.8-flash',
+            contents: prompt,
+            config: { responseMimeType: 'application/json', temperature: 0.2 },
+          });
+          const parsed = JSON.parse((response.text || '{}').replace(/```json\n?|\n?```/g, '').trim());
+          if (parsed.verdict) verdict = parsed.verdict;
+          if (parsed.reasoning) reasoning = parsed.reasoning;
+        } catch {
+          // Use deterministic guardrail reasoning above
+        }
+      }
+
+      res.json({
+        verdict,
+        reasoning,
+        amountINR: cost,
+        amountUSD: (Math.max(0.5, cost / getInrPerUsd())).toFixed(2),
+        inrPerUsd: getInrPerUsd(),
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message || 'Guardrail evaluation failed' });
+    }
+  });
+
+  // 6g. Create PayPal Sandbox Order (Orders API v2)
+  app.post('/api/paypal/orders', async (req, res) => {
+    try {
+      const { title, amountINR, category, purpose = 'purchase', goalId, aiVerdict, aiReasoning } = req.body || {};
+      if (!title || !amountINR || Number(amountINR) <= 0) {
+        res.status(400).json({ error: 'Valid title and positive amountINR are required.' });
+        return;
+      }
+
+      const origin = `${req.protocol}://${req.get('host')}`;
+      const returnUrl = `${origin}/?paypal_return=order`;
+      const cancelUrl = `${origin}/?paypal_cancel=order`;
+
+      const order = await createSandboxOrder({
+        title: String(title),
+        amountINR: Number(amountINR),
+        category: category || 'Shopping & Goods',
+        purpose,
+        goalId,
+        aiVerdict,
+        aiReasoning,
+        returnUrl,
+        cancelUrl,
+      });
+
+      res.json({ order, ...getTrackedPayPalData() });
+    } catch (err: any) {
+      res.status(err.statusCode || 400).json({
+        error: err.message || 'Failed to create PayPal Sandbox Order',
+        paypalError: err.paypalError,
+      });
+    }
+  });
+
+  // 6h. Inspect PayPal Sandbox Order status
+  app.get('/api/paypal/orders/:orderId', async (req, res) => {
+    try {
+      const order = await getSandboxOrderDetails(req.params.orderId);
+      res.json({ order, ...getTrackedPayPalData() });
+    } catch (err: any) {
+      res.status(err.statusCode || 400).json({ error: err.message || 'Failed to retrieve PayPal order' });
+    }
+  });
+
+  // 6i. Capture approved PayPal Sandbox Order (Orders API v2)
+  app.post('/api/paypal/orders/:orderId/capture', async (req, res) => {
+    try {
+      const order = await captureSandboxOrder(req.params.orderId);
+      res.json({ order, ...getTrackedPayPalData() });
+    } catch (err: any) {
+      res.status(err.statusCode || 400).json({
+        error: err.message || 'Failed to capture PayPal Sandbox Order. Make sure the buyer approved the order in PayPal first.',
+        paypalError: err.paypalError,
+      });
+    }
+  });
+
+  // 6j. Create PayPal Product + Billing Plan + Subscription (Subscriptions API v1)
+  app.post('/api/paypal/subscriptions', async (req, res) => {
+    try {
+      const { name, amountINR, frequency = 'monthly', goalId } = req.body || {};
+      if (!name || !amountINR || Number(amountINR) <= 0) {
+        res.status(400).json({ error: 'Valid name and positive amountINR are required.' });
+        return;
+      }
+
+      const origin = `${req.protocol}://${req.get('host')}`;
+      const subscription = await createSandboxSubscription({
+        name: String(name),
+        amountINR: Number(amountINR),
+        frequency: frequency === 'yearly' ? 'yearly' : 'monthly',
+        goalId,
+        returnUrl: `${origin}/?paypal_return=subscription`,
+        cancelUrl: `${origin}/?paypal_cancel=subscription`,
+      });
+
+      res.json({ subscription, ...getTrackedPayPalData() });
+    } catch (err: any) {
+      res.status(err.statusCode || 400).json({
+        error: err.message || 'Failed to create PayPal Subscription',
+        paypalError: err.paypalError,
+      });
+    }
+  });
+
+  // 6k. Refresh PayPal Subscription status
+  app.get('/api/paypal/subscriptions/:subscriptionId', async (req, res) => {
+    try {
+      const subscription = await refreshSandboxSubscription(req.params.subscriptionId);
+      res.json({ subscription, ...getTrackedPayPalData() });
+    } catch (err: any) {
+      res.status(err.statusCode || 400).json({ error: err.message || 'Failed to fetch PayPal subscription' });
+    }
+  });
+
+  // 6l. Cancel PayPal Subscription
+  app.post('/api/paypal/subscriptions/:subscriptionId/cancel', async (req, res) => {
+    try {
+      const reason = req.body?.reason || 'Canceled via FinPilot AI Subscription Governance';
+      const subscription = await cancelSandboxSubscription(req.params.subscriptionId, reason);
+      res.json({ subscription, ...getTrackedPayPalData() });
+    } catch (err: any) {
+      res.status(err.statusCode || 400).json({ error: err.message || 'Failed to cancel PayPal subscription' });
+    }
+  });
+
+  // 6m. Sync PayPal Sandbox Balances & Transaction Search API + AI Categorization
+  app.post('/api/paypal/sync', async (req, res) => {
+    try {
+      const days = Number(req.body?.days) || 30;
+      const syncResult = await syncSandboxReporting(days);
+
+      // Categorize retrieved PayPal transactions with Gemini 3.8 Flash (or deterministic fallback)
+      let categorized = syncResult.transactions.map((tx: any, idx: number) => {
+        const lower = String(tx.merchant || '').toLowerCase();
+        let category = tx.type === 'income' ? 'Income' : 'Shopping & Goods';
+        if (lower.includes('subscription') || lower.includes('netflix') || lower.includes('spotify') || lower.includes('adobe')) {
+          category = 'Subscriptions & Digital';
+        } else if (lower.includes('goal') || lower.includes('vault') || lower.includes('saving')) {
+          category = 'Financial & Savings';
+        } else if (lower.includes('food') || lower.includes('coffee') || lower.includes('restaurant')) {
+          category = 'Dining & Takeout';
+        }
+        return {
+          id: `pp-tx-${tx.paypalTransactionId || Date.now()}-${idx}`,
+          date: tx.date,
+          merchant: tx.merchant,
+          description: tx.description,
+          amount: tx.amountINR,
+          usdAmount: tx.amountUSD,
+          type: tx.type,
+          category,
+          paymentMethod: `PayPal Sandbox (${tx.currency})`,
+          paypalTransactionId: tx.paypalTransactionId,
+          confidence: 0.92,
+        };
+      });
+
+      const client = getGeminiClient();
+      if (client && categorized.length > 0) {
+        try {
+          const prompt = `
+Categorize these PayPal Sandbox transactions into valid FinPilot categories:
+["Housing & Rent","Utilities & Bills","Groceries","Dining & Takeout","Transportation","Subscriptions & Digital","Shopping & Goods","Health & Fitness","Entertainment","Travel","Income","Education & Learning","Financial & Savings","Other Expenses"]
+
+Transactions: ${JSON.stringify(categorized.map((t) => ({ id: t.id, merchant: t.merchant, description: t.description, amountINR: t.amount, type: t.type })))}
+
+Return ONLY valid JSON:
+{
+  "mappings": [
+    { "id": "string", "category": "valid category", "isRecurring": boolean, "isAnomaly": boolean, "anomalyReason": "string or null" }
+  ]
+}`;
+          const response = await callGeminiWithResilience(client, {
+            primaryModel: 'gemini-3.8-flash',
+            contents: prompt,
+            config: { responseMimeType: 'application/json', temperature: 0.1 },
+          });
+          const parsed = JSON.parse((response.text || '{}').replace(/```json\n?|\n?```/g, '').trim());
+          if (Array.isArray(parsed.mappings)) {
+            const mapById = new Map<string, any>(parsed.mappings.map((m: any) => [m.id, m]));
+            categorized = categorized.map((tx: any) => {
+              const m = mapById.get(tx.id);
+              return m
+                ? {
+                    ...tx,
+                    category: m.category || tx.category,
+                    isRecurring: Boolean(m.isRecurring),
+                    isAnomaly: Boolean(m.isAnomaly),
+                    anomalyReason: m.anomalyReason || undefined,
+                  }
+                : tx;
+            });
+          }
+        } catch {
+          // Keep deterministic categorization
+        }
+      }
+
+      res.json({
+        balances: syncResult.balances,
+        transactions: categorized,
+        scopeWarning: syncResult.scopeWarning,
+        ...getTrackedPayPalData(),
+      });
+    } catch (err: any) {
+      res.status(err.statusCode || 400).json({ error: err.message || 'Failed to sync PayPal Sandbox' });
     }
   });
 

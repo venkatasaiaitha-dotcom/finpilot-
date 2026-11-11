@@ -1,6 +1,17 @@
 import React, { useState } from 'react';
 import { Transaction, Category } from '../types';
-import { Search, Repeat, Plus, FileSpreadsheet, UploadCloud, X, ArrowUpRight, ArrowDownRight } from 'lucide-react';
+import {
+  Search,
+  Repeat,
+  Plus,
+  FileSpreadsheet,
+  UploadCloud,
+  X,
+  ArrowUpRight,
+  ArrowDownRight,
+  CreditCard,
+  RefreshCw,
+} from 'lucide-react';
 import { formatINR } from '../utils/currency';
 
 interface TransactionLedgerProps {
@@ -9,6 +20,8 @@ interface TransactionLedgerProps {
   onAddTransaction: (transaction: Transaction) => void;
   onOpenUploadModal?: () => void;
   onOpenGoogleSheets?: () => void;
+  onSyncPayPal?: () => Promise<void>;
+  paypalConnected?: boolean;
 }
 
 const CATEGORIES: Category[] = [
@@ -34,10 +47,23 @@ export const TransactionLedger: React.FC<TransactionLedgerProps> = ({
   onAddTransaction,
   onOpenUploadModal,
   onOpenGoogleSheets,
+  onSyncPayPal,
+  paypalConnected = false,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [filterType, setFilterType] = useState<'all' | 'expense' | 'income' | 'recurring' | 'anomalies'>('all');
+  const [filterType, setFilterType] = useState<'all' | 'expense' | 'income' | 'recurring' | 'anomalies' | 'paypal'>('all');
+  const [syncingPayPal, setSyncingPayPal] = useState(false);
+
+  const handlePayPalSyncClick = async () => {
+    if (!onSyncPayPal || syncingPayPal) return;
+    setSyncingPayPal(true);
+    try {
+      await onSyncPayPal();
+    } finally {
+      setSyncingPayPal(false);
+    }
+  };
 
   // Manual Add Modal State
   const [showAddModal, setShowAddModal] = useState(false);
@@ -63,6 +89,14 @@ export const TransactionLedger: React.FC<TransactionLedgerProps> = ({
     if (filterType === 'income') return t.type === 'income';
     if (filterType === 'recurring') return Boolean(t.isRecurring);
     if (filterType === 'anomalies') return Boolean(t.isAnomaly);
+    if (filterType === 'paypal') {
+      return Boolean(
+        t.paypalOrderId ||
+          t.paypalCaptureId ||
+          t.paypalTransactionId ||
+          t.paymentMethod?.toLowerCase().includes('paypal')
+      );
+    }
 
     return true;
   });
@@ -108,6 +142,25 @@ export const TransactionLedger: React.FC<TransactionLedgerProps> = ({
         </div>
 
         <div className="flex items-center gap-2 self-start md:self-auto flex-wrap">
+          {onSyncPayPal && (
+            <button
+              onClick={handlePayPalSyncClick}
+              disabled={syncingPayPal}
+              title={
+                paypalConnected
+                  ? 'Sync transactions from PayPal Developer Sandbox Reporting API'
+                  : 'Open PayPal Hub or sync Sandbox transactions'
+              }
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold border border-[#0070ba]/40 bg-[#0070ba]/15 text-[#38bdf8] hover:bg-[#0070ba]/25 transition-colors shadow-xs cursor-pointer disabled:opacity-60"
+            >
+              {syncingPayPal ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <CreditCard className="w-3.5 h-3.5" />
+              )}
+              <span>{syncingPayPal ? 'Syncing PayPal...' : 'Sync PayPal'}</span>
+            </button>
+          )}
           {onOpenGoogleSheets && (
             <button
               onClick={onOpenGoogleSheets}
@@ -174,6 +227,7 @@ export const TransactionLedger: React.FC<TransactionLedgerProps> = ({
                 { id: 'income', label: 'Income' },
                 { id: 'recurring', label: 'Recurring' },
                 { id: 'anomalies', label: 'Anomalies' },
+                { id: 'paypal', label: 'PayPal' },
               ] as const
             ).map((tab) => {
               const isSelected = filterType === tab.id;
@@ -185,6 +239,8 @@ export const TransactionLedger: React.FC<TransactionLedgerProps> = ({
                     isSelected
                       ? tab.id === 'anomalies'
                         ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                        : tab.id === 'paypal'
+                        ? 'bg-[#0070ba]/20 text-[#38bdf8] font-bold border border-[#0070ba]/40 shadow-xs'
                         : 'bg-emerald-500/15 text-emerald-400 font-bold border border-emerald-500/30 shadow-xs'
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
@@ -262,6 +318,15 @@ export const TransactionLedger: React.FC<TransactionLedgerProps> = ({
                             ⚠️ Alert
                           </span>
                         )}
+                        {(t.paypalCaptureId || t.paypalTransactionId || t.paypalOrderId) && (
+                          <span
+                            className="text-[10px] px-1.5 py-0.2 rounded bg-[#0070ba]/15 text-[#38bdf8] border border-[#0070ba]/30 font-semibold inline-flex items-center gap-1 font-mono"
+                            title={`PayPal Sandbox ID: ${t.paypalCaptureId || t.paypalTransactionId || t.paypalOrderId}`}
+                          >
+                            <CreditCard className="w-2.5 h-2.5" />
+                            PayPal ··{(t.paypalCaptureId || t.paypalTransactionId || t.paypalOrderId || '').slice(-6)}
+                          </span>
+                        )}
                       </div>
                       {t.description && (
                         <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-1">{t.description}</p>
@@ -291,6 +356,11 @@ export const TransactionLedger: React.FC<TransactionLedgerProps> = ({
                       <span className={isIncome ? 'text-emerald-400' : 'text-slate-100'}>
                         {isIncome ? '+' : '-'}{formatINR(t.amount)}
                       </span>
+                      {typeof t.usdAmount === 'number' && (
+                        <span className="block text-[10px] font-mono text-[#38bdf8]">
+                          ${t.usdAmount.toFixed(2)} USD
+                        </span>
+                      )}
                     </td>
                   </tr>
                 );

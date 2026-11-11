@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
 import { RecurringObligation, Category } from '../types';
-import { Repeat, Calendar, Plus, X, AlertCircle } from 'lucide-react';
+import { Repeat, Calendar, Plus, X, AlertCircle, CreditCard, RefreshCw } from 'lucide-react';
 import { formatINR } from '../utils/currency';
 
 interface RecurringSubscriptionsProps {
   obligations: RecurringObligation[];
   onToggleStatus: (id: string) => void;
   onAddObligation?: (obligation: RecurringObligation) => void;
+  onManagePayPalSubscriptions?: () => void;
+  onRefreshPayPalSubscription?: (subscriptionId: string) => Promise<void>;
+  onCancelPayPalSubscription?: (subscriptionId: string) => Promise<void>;
 }
 
 const CATEGORIES: Category[] = [
@@ -24,9 +27,13 @@ export const RecurringSubscriptions: React.FC<RecurringSubscriptionsProps> = ({
   obligations,
   onToggleStatus,
   onAddObligation,
+  onManagePayPalSubscriptions,
+  onRefreshPayPalSubscription,
+  onCancelPayPalSubscription,
 }) => {
   const [filter, setFilter] = useState<'all' | 'subscriptions' | 'bills' | 'upcoming'>('all');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [busySubId, setBusySubId] = useState<string | null>(null);
 
   // Add form fields
   const [name, setName] = useState('');
@@ -109,6 +116,16 @@ export const RecurringSubscriptions: React.FC<RecurringSubscriptionsProps> = ({
             <span className="text-sm font-bold text-emerald-400">{formatINR(totalMonthlyAll)}/mo</span>
             <span className="text-[10px] text-slate-500 block">Rent + Bills + Subs</span>
           </div>
+          {onManagePayPalSubscriptions && (
+            <button
+              onClick={onManagePayPalSubscriptions}
+              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-[#0070ba]/15 hover:bg-[#0070ba]/25 text-[#38bdf8] border border-[#0070ba]/30 transition-colors cursor-pointer"
+              title="Create & manage real PayPal Sandbox auto-pay subscriptions"
+            >
+              <CreditCard className="w-3.5 h-3.5" />
+              <span>PayPal Auto-Pay</span>
+            </button>
+          )}
           <button
             onClick={() => setShowAddModal(true)}
             className="p-2 rounded-xl bg-slate-900 border border-slate-700 text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
@@ -187,6 +204,15 @@ export const RecurringSubscriptions: React.FC<RecurringSubscriptionsProps> = ({
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-medium">
                         {item.frequency}
                       </span>
+                      {item.paypalSubscriptionId && (
+                        <span
+                          className="text-[10px] px-2 py-0.5 rounded-full bg-[#0070ba]/15 text-[#38bdf8] border border-[#0070ba]/30 font-semibold inline-flex items-center gap-1 font-mono"
+                          title={`PayPal Subscription ID: ${item.paypalSubscriptionId}`}
+                        >
+                          <CreditCard className="w-2.5 h-2.5" />
+                          {item.paypalStatus || 'PAYPAL'}
+                        </span>
+                      )}
                       {item.priceChangeAlert && (
                         <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-300 border border-rose-500/30 font-semibold flex items-center gap-1">
                           <AlertCircle className="w-3 h-3 text-rose-400" />
@@ -206,11 +232,57 @@ export const RecurringSubscriptions: React.FC<RecurringSubscriptionsProps> = ({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 self-end sm:self-center">
-                  <div className="text-right">
+                <div className="flex items-center gap-2 self-end sm:self-center flex-wrap">
+                  <div className="text-right mr-1">
                     <span className="font-bold text-white text-sm">{formatINR(item.amount)}</span>
                     <span className="text-[10px] text-slate-500 block">/{item.frequency}</span>
                   </div>
+
+                  {item.paypalSubscriptionId && onRefreshPayPalSubscription && (
+                    <button
+                      type="button"
+                      disabled={busySubId === item.paypalSubscriptionId}
+                      onClick={async () => {
+                        setBusySubId(item.paypalSubscriptionId!);
+                        try {
+                          await onRefreshPayPalSubscription(item.paypalSubscriptionId!);
+                        } finally {
+                          setBusySubId(null);
+                        }
+                      }}
+                      className="text-[10px] font-semibold px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                      title="Sync live status from PayPal Sandbox Subscriptions API"
+                    >
+                      <RefreshCw
+                        className={`w-2.5 h-2.5 ${
+                          busySubId === item.paypalSubscriptionId ? 'animate-spin' : ''
+                        }`}
+                      />
+                      <span>Sync</span>
+                    </button>
+                  )}
+
+                  {item.paypalSubscriptionId &&
+                    onCancelPayPalSubscription &&
+                    item.paypalStatus !== 'CANCELLED' &&
+                    item.status !== 'canceled' && (
+                      <button
+                        type="button"
+                        disabled={busySubId === item.paypalSubscriptionId}
+                        onClick={async () => {
+                          setBusySubId(item.paypalSubscriptionId!);
+                          try {
+                            await onCancelPayPalSubscription(item.paypalSubscriptionId!);
+                          } finally {
+                            setBusySubId(null);
+                          }
+                        }}
+                        className="text-[10px] font-bold px-2 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/30 cursor-pointer disabled:opacity-50"
+                        title="Cancel real PayPal Sandbox Subscription via API"
+                      >
+                        Cancel PayPal
+                      </button>
+                    )}
 
                   {/* Status Toggle Button */}
                   <button

@@ -3,6 +3,7 @@ import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { OverviewView } from './components/views/OverviewView';
 import { SettingsView } from './components/views/SettingsView';
+import { PayPalHubView } from './components/views/PayPalHubView';
 import { AgentChat } from './components/AgentChat';
 import { BudgetManager } from './components/BudgetManager';
 import { RecurringSubscriptions } from './components/RecurringSubscriptions';
@@ -15,6 +16,15 @@ import { StatementUploaderModal } from './components/StatementUploaderModal';
 import { GoogleSheetsModal } from './components/GoogleSheetsModal';
 import { initAuth } from './services/googleAuth';
 import { User } from 'firebase/auth';
+import {
+  PayPalFullState,
+  getPayPalStatus,
+  getPayPalOrder,
+  capturePayPalOrder,
+  refreshPayPalSubscription,
+  cancelPayPalSubscription,
+  syncPayPalSandbox,
+} from './services/paypalApi';
 
 import {
   INITIAL_TRANSACTIONS,
@@ -34,6 +44,11 @@ import {
   Category,
   FinancialContextSnapshot,
   NavigationTab,
+  PayPalStatusResponse,
+  PayPalOrderRecord,
+  PayPalSubscriptionRecord,
+  PayPalWalletBalance,
+  PayPalApiLogEntry,
 } from './types';
 
 // Helpers to ensure unique IDs across items
@@ -130,6 +145,32 @@ export default function App() {
   const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
   const [isGoogleSheetsOpen, setIsGoogleSheetsOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+
+  // PayPal Sandbox states
+  const [paypalStatus, setPaypalStatus] = useState<PayPalStatusResponse | null>(null);
+  const [paypalOrders, setPaypalOrders] = useState<PayPalOrderRecord[]>([]);
+  const [paypalSubscriptions, setPaypalSubscriptions] = useState<PayPalSubscriptionRecord[]>([]);
+  const [paypalBalances, setPaypalBalances] = useState<PayPalWalletBalance[]>([]);
+  const [paypalApiLogs, setPaypalApiLogs] = useState<PayPalApiLogEntry[]>([]);
+  const [paypalScopeWarning, setPaypalScopeWarning] = useState<string | undefined>(undefined);
+
+  const applyPayPalFullState = (state: PayPalFullState) => {
+    setPaypalStatus({
+      connected: state.connected,
+      mode: state.mode,
+      clientId: state.clientId,
+      source: state.source,
+      appId: state.appId,
+      scopes: state.scopes,
+      hasTransactionSearchScope: state.hasTransactionSearchScope,
+      inrPerUsd: state.inrPerUsd,
+      tokenExpiresAt: state.tokenExpiresAt,
+      lastError: state.lastError,
+    });
+    setPaypalOrders(state.orders || []);
+    setPaypalSubscriptions(state.subscriptions || []);
+    setPaypalApiLogs(state.apiLogs || []);
+  };
 
   // Initialize Firebase Auth listener for Google Workspace
   useEffect(() => {
@@ -258,6 +299,15 @@ export default function App() {
 
   // Financial snapshot for AI Agent context
   const financialContext: FinancialContextSnapshot = useMemo(() => {
+    const capturedOrders = paypalOrders.filter((o) => o.status === 'COMPLETED');
+    const totalCapturedUSD = capturedOrders.reduce(
+      (acc, o) => acc + (Number(o.amountUSD) || 0),
+      0
+    );
+    const activePaypalSubs = paypalSubscriptions.filter(
+      (s) => s.status === 'ACTIVE'
+    ).length;
+
     return {
       currentMonth: monthDisplayName,
       totalIncome,
@@ -285,6 +335,14 @@ export default function App() {
         onTrack: g.priority === 'high',
         projectedCompletion: g.targetDate,
       })),
+      paypalContext: {
+        connected: Boolean(paypalStatus?.connected),
+        inrPerUsd: paypalStatus?.inrPerUsd || 84.5,
+        capturedOrdersCount: capturedOrders.length,
+        totalCapturedUSD,
+        activePaypalSubscriptionsCount: activePaypalSubs,
+        sandboxBalances: paypalBalances.length > 0 ? paypalBalances : undefined,
+      },
     };
   }, [
     monthDisplayName,
@@ -303,6 +361,10 @@ export default function App() {
     committedUpcoming,
     unallocatedBuffer,
     goals,
+    paypalStatus,
+    paypalOrders,
+    paypalSubscriptions,
+    paypalBalances,
   ]);
 
   // Handlers
@@ -391,6 +453,204 @@ export default function App() {
     setGoals((prev) => [...prev, { ...goal, id: uniqueId }]);
   };
 
+  // PayPal Sandbox Integration Handlers
+  const upsertPayPalSubscriptionObligation = (sub: PayPalSubscriptionRecord) => {
+    setObligations((prev) => {
+      const existingIdx = prev.findIndex((o) => o.paypalSubscriptionId === sub.subscriptionId);
+      const mappedStatus: RecurringObligation['status'] =
+        sub.status === 'CANCELLED' || sub.status === 'EXPIRED' ? 'canceled' : 'active';
+
+      if (existingIdx >= 0) {
+        return prev.map((o, idx) =>
+          idx === existingIdx
+            ? {
+                ...o,
+                status: mappedStatus,
+                paypalStatus: sub.status,
+              }
+            : o
+        );
+      }
+
+      if (sub.status !== 'ACTIVE' && sub.status !== 'APPROVAL_PENDING') {
+        return prev;
+      }
+
+      const nextDue = new Date();
+      if (sub.frequency === 'yearly') {
+        nextDue.setFullYear(nextDue.getFullYear() + 1);
+      } else {
+        nextDue.setMonth(nextDue.getMonth() + 1);
+      }
+
+      const newObligation: RecurringObligation = {
+        id: `pp-sub-${sub.subscriptionId}`,
+        name: sub.name,
+        category: sub.goalId ? 'Financial & Savings' : 'Subscriptions & Digital',
+        amount: sub.amountINR,
+        frequency: sub.frequency,
+        nextDueDate: nextDue.toISOString().slice(0, 10),
+        status: mappedStatus,
+        paymentMethod: 'PayPal Auto-Pay',
+        isSubscription: !sub.goalId,
+        paypalSubscriptionId: sub.subscriptionId,
+        paypalPlanId: sub.planId,
+        paypalStatus: sub.status,
+      };
+      return [newObligation, ...prev];
+    });
+  };
+
+  const handlePayPalPaymentCaptured = (order: PayPalOrderRecord) => {
+    if (!order || order.status !== 'COMPLETED') return;
+
+    const txDate = (order.capturedAt || order.createdAt || new Date().toISOString()).slice(0, 10);
+    const txId = `pp-order-${order.captureId || order.orderId}`;
+
+    setTransactions((prev) => {
+      const alreadyLogged = prev.some(
+        (t) =>
+          t.id === txId ||
+          t.paypalOrderId === order.orderId ||
+          (order.captureId && t.paypalCaptureId === order.captureId)
+      );
+      if (alreadyLogged) return prev;
+
+      const newTx: Transaction = {
+        id: txId,
+        date: txDate,
+        merchant:
+          order.purpose === 'goal_funding'
+            ? `Goal Deposit: ${order.title}`
+            : order.title,
+        category:
+          order.category ||
+          (order.purpose === 'goal_funding' ? 'Financial & Savings' : 'Shopping & Goods'),
+        amount: Math.max(1, Math.round(order.amountINR)),
+        usdAmount: Number(order.amountUSD) || undefined,
+        type: 'expense',
+        description: `PayPal Sandbox Capture ${order.captureId || order.orderId}${
+          order.payerEmail ? ` • ${order.payerEmail}` : ''
+        }`,
+        paymentMethod: 'PayPal Sandbox',
+        paypalOrderId: order.orderId,
+        paypalCaptureId: order.captureId,
+      };
+
+      return [newTx, ...prev];
+    });
+
+    if (order.purpose === 'goal_funding' && order.goalId) {
+      setGoals((prev) =>
+        prev.map((g) =>
+          g.id === order.goalId
+            ? { ...g, currentAmount: g.currentAmount + Math.round(order.amountINR) }
+            : g
+        )
+      );
+    }
+  };
+
+  const handleSyncPayPal = async () => {
+    const result = await syncPayPalSandbox(30);
+    setPaypalBalances(result.balances || []);
+    setPaypalScopeWarning(result.scopeWarning);
+    setPaypalOrders(result.orders || []);
+    setPaypalSubscriptions(result.subscriptions || []);
+    setPaypalApiLogs(result.apiLogs || []);
+
+    if (result.transactions && result.transactions.length > 0) {
+      setTransactions((prev) => {
+        const existingTxIds = new Set(
+          prev
+            .flatMap((t) => [t.id, t.paypalTransactionId, t.paypalCaptureId])
+            .filter(Boolean) as string[]
+        );
+        const fresh = result.transactions.filter(
+          (incoming) =>
+            !existingTxIds.has(incoming.id) &&
+            !(incoming.paypalTransactionId && existingTxIds.has(incoming.paypalTransactionId))
+        );
+        return fresh.length > 0 ? [...fresh, ...prev] : prev;
+      });
+    }
+  };
+
+  const handleRefreshPayPalSubscription = async (subscriptionId: string) => {
+    const res = await refreshPayPalSubscription(subscriptionId);
+    setPaypalSubscriptions(res.subscriptions || []);
+    setPaypalApiLogs(res.apiLogs || []);
+    upsertPayPalSubscriptionObligation(res.subscription);
+  };
+
+  const handleCancelPayPalSubscription = async (subscriptionId: string) => {
+    const res = await cancelPayPalSubscription(subscriptionId, 'Canceled from FinPilot dashboard');
+    setPaypalSubscriptions(res.subscriptions || []);
+    setPaypalApiLogs(res.apiLogs || []);
+    upsertPayPalSubscriptionObligation(res.subscription);
+  };
+
+  // Load PayPal Sandbox status & handle OAuth/Checkout/Subscription return redirects
+  useEffect(() => {
+    let mounted = true;
+
+    const initPayPal = async () => {
+      try {
+        const state = await getPayPalStatus();
+        if (!mounted) return;
+        applyPayPalFullState(state);
+
+        const params = new URLSearchParams(window.location.search);
+        const returnType = params.get('paypal_return');
+        const token = params.get('token');
+        const subId = params.get('subscription_id');
+
+        if (returnType) {
+          setActiveTab('paypal');
+
+          if (returnType === 'order' && token) {
+            try {
+              const details = await getPayPalOrder(token);
+              if (details.order.status === 'APPROVED') {
+                const captured = await capturePayPalOrder(token);
+                if (!mounted) return;
+                setPaypalOrders(captured.orders || []);
+                setPaypalApiLogs(captured.apiLogs || []);
+                handlePayPalPaymentCaptured(captured.order);
+              } else if (details.order.status === 'COMPLETED') {
+                if (!mounted) return;
+                setPaypalOrders(details.orders || []);
+                setPaypalApiLogs(details.apiLogs || []);
+                handlePayPalPaymentCaptured(details.order);
+              }
+            } catch (err) {
+              console.error('PayPal return order completion error:', err);
+            }
+          } else if (returnType === 'subscription' && subId) {
+            try {
+              const subRes = await refreshPayPalSubscription(subId);
+              if (!mounted) return;
+              setPaypalSubscriptions(subRes.subscriptions || []);
+              setPaypalApiLogs(subRes.apiLogs || []);
+              upsertPayPalSubscriptionObligation(subRes.subscription);
+            } catch (err) {
+              console.error('PayPal return subscription sync error:', err);
+            }
+          }
+
+          window.history.replaceState({}, '', window.location.pathname);
+        }
+      } catch {
+        // Backend still booting or PayPal status unavailable; ignored safely
+      }
+    };
+
+    initPayPal();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const handleWipeData = () => {
     setTransactions([]);
     setObligations([]);
@@ -450,6 +710,7 @@ export default function App() {
         onCloseMobile={() => setIsMobileNavOpen(false)}
         currentUser={currentUser}
         onOpenGoogleSheets={() => setIsGoogleSheetsOpen(true)}
+        paypalConnected={Boolean(paypalStatus?.connected)}
       />
 
       {/* 2. Main Content View Area */}
@@ -467,6 +728,8 @@ export default function App() {
           onAnalyzePurchase={() => setIsAnalyzeModalOpen(true)}
           unresolvedAnomaliesCount={unresolvedCount}
           onNavigateToAlerts={() => setActiveTab('alerts')}
+          paypalConnected={Boolean(paypalStatus?.connected)}
+          onNavigateToPayPal={() => setActiveTab('paypal')}
         />
 
         {/* View Router */}
@@ -497,6 +760,37 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'paypal' && (
+            <PayPalHubView
+              paypalStatus={paypalStatus}
+              orders={paypalOrders}
+              subscriptions={paypalSubscriptions}
+              balances={paypalBalances}
+              apiLogs={paypalApiLogs}
+              scopeWarning={paypalScopeWarning}
+              goals={goals}
+              financialContext={financialContext}
+              onStatusUpdated={(status, updatedOrders, updatedSubs, updatedLogs) => {
+                setPaypalStatus(status);
+                setPaypalOrders(updatedOrders);
+                setPaypalSubscriptions(updatedSubs);
+                setPaypalApiLogs(updatedLogs);
+              }}
+              onOrderActivity={(updatedOrders, updatedLogs) => {
+                setPaypalOrders(updatedOrders);
+                setPaypalApiLogs(updatedLogs);
+              }}
+              onSubscriptionActivity={(updatedSubs, updatedLogs) => {
+                setPaypalSubscriptions(updatedSubs);
+                setPaypalApiLogs(updatedLogs);
+                updatedSubs.forEach((sub) => upsertPayPalSubscriptionObligation(sub));
+              }}
+              onSyncPayPal={handleSyncPayPal}
+              onPaymentCaptured={handlePayPalPaymentCaptured}
+              onOpenSettings={() => setActiveTab('settings')}
+            />
+          )}
+
           {activeTab === 'transactions' && (
             <TransactionLedger
               transactions={transactions}
@@ -504,6 +798,8 @@ export default function App() {
               onAddTransaction={handleAddTransaction}
               onOpenUploadModal={() => setIsUploadModalOpen(true)}
               onOpenGoogleSheets={() => setIsGoogleSheetsOpen(true)}
+              onSyncPayPal={handleSyncPayPal}
+              paypalConnected={Boolean(paypalStatus?.connected)}
             />
           )}
 
@@ -523,6 +819,13 @@ export default function App() {
                 .filter((c) => c.category === 'Dining & Takeout' || c.category === 'Shopping & Goods')
                 .reduce((a, b) => a + b.amount, 0)}
               netSavings={netSavings}
+              paypalStatus={paypalStatus}
+              onOrderActivity={(updatedOrders, updatedLogs) => {
+                setPaypalOrders(updatedOrders);
+                setPaypalApiLogs(updatedLogs);
+              }}
+              onPaymentCaptured={handlePayPalPaymentCaptured}
+              onOpenPayPalSettings={() => setActiveTab('settings')}
             />
           )}
 
@@ -531,6 +834,9 @@ export default function App() {
               obligations={obligations}
               onToggleStatus={handleToggleObligationStatus}
               onAddObligation={handleAddObligation}
+              onManagePayPalSubscriptions={() => setActiveTab('paypal')}
+              onRefreshPayPalSubscription={handleRefreshPayPalSubscription}
+              onCancelPayPalSubscription={handleCancelPayPalSubscription}
             />
           )}
 
@@ -551,6 +857,9 @@ export default function App() {
               onLoadSampleData={handleLoadSampleData}
               onWipeData={handleWipeData}
               hasData={hasData}
+              paypalStatus={paypalStatus}
+              onPayPalStatusUpdated={applyPayPalFullState}
+              onNavigateToPayPalHub={() => setActiveTab('paypal')}
             />
           )}
         </main>
@@ -581,6 +890,13 @@ export default function App() {
           setAssistantPrompt(prompt);
           setActiveTab('assistant');
         }}
+        paypalStatus={paypalStatus}
+        onOrderActivity={(updatedOrders, updatedLogs) => {
+          setPaypalOrders(updatedOrders);
+          setPaypalApiLogs(updatedLogs);
+        }}
+        onPaymentCaptured={handlePayPalPaymentCaptured}
+        onOpenPayPalSettings={() => setActiveTab('settings')}
       />
 
       <StatementUploaderModal

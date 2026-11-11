@@ -24,13 +24,18 @@ export interface Transaction {
   amount: number; // positive for expenses, positive for income with type='income'
   type: TransactionType;
   category: Category;
-  paymentMethod: string; // e.g., 'Chase Sapphire', 'Bank Checking', 'Apple Pay'
+  paymentMethod: string; // e.g., 'PayPal Sandbox', 'UPI / HDFC'
   isRecurring?: boolean;
   recurringFrequency?: 'monthly' | 'yearly' | 'weekly' | 'quarterly';
   isAnomaly?: boolean;
   anomalyReason?: string;
   confidence?: number; // 0 to 1
   tags?: string[];
+  paypalOrderId?: string;
+  paypalCaptureId?: string;
+  paypalTransactionId?: string;
+  paypalSubscriptionId?: string;
+  usdAmount?: number;
 }
 
 export interface Budget {
@@ -59,6 +64,9 @@ export interface RecurringObligation {
     difference: number;
     dateDetected: string;
   };
+  paypalSubscriptionId?: string;
+  paypalPlanId?: string;
+  paypalStatus?: string;
 }
 
 export interface FinancialGoal {
@@ -129,6 +137,68 @@ export interface ChatMessage {
   };
 }
 
+export interface PayPalStatusResponse {
+  connected: boolean;
+  mode: 'sandbox';
+  clientId: string | null;
+  source: 'env' | 'session' | 'none';
+  appId?: string;
+  scopes?: string[];
+  hasTransactionSearchScope?: boolean;
+  inrPerUsd: number;
+  tokenExpiresAt?: string;
+  lastError?: string | null;
+}
+
+export interface PayPalOrderRecord {
+  orderId: string;
+  status: string;
+  purpose: 'purchase' | 'goal_funding';
+  title: string;
+  amountINR: number;
+  amountUSD: string;
+  category: Category;
+  goalId?: string;
+  approveUrl?: string;
+  captureId?: string;
+  payerEmail?: string;
+  aiVerdict?: 'healthy' | 'caution' | 'stretched';
+  aiReasoning?: string;
+  createdAt: string;
+  capturedAt?: string;
+}
+
+export interface PayPalSubscriptionRecord {
+  subscriptionId: string;
+  planId: string;
+  productId: string;
+  name: string;
+  amountINR: number;
+  amountUSD: string;
+  frequency: 'monthly' | 'yearly';
+  status: string;
+  approveUrl?: string;
+  goalId?: string;
+  createdAt: string;
+}
+
+export interface PayPalWalletBalance {
+  currency: string;
+  totalValue: string;
+  availableValue: string;
+  withheldValue: string;
+}
+
+export interface PayPalApiLogEntry {
+  id: string;
+  timestamp: string;
+  method: 'GET' | 'POST';
+  endpoint: string;
+  statusCode: number;
+  summary: string;
+  durationMs: number;
+}
+
 export interface FinancialContextSnapshot {
   currentMonth: string;
   totalIncome: number;
@@ -156,15 +226,23 @@ export interface FinancialContextSnapshot {
     onTrack: boolean;
     projectedCompletion: string;
   }[];
+  paypalContext?: {
+    connected: boolean;
+    inrPerUsd: number;
+    capturedOrdersCount: number;
+    totalCapturedUSD: number;
+    activePaypalSubscriptionsCount: number;
+    sandboxBalances?: PayPalWalletBalance[];
+  };
 }
 
 export type NavigationTab =
   | 'overview'
   | 'assistant'
+  | 'paypal'
   | 'transactions'
   | 'budgets'
   | 'goals'
   | 'recurring'
   | 'alerts'
   | 'settings';
-
