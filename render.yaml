@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: finpilot-paypal-ai
+    runtime: node
+    plan: free
+    buildCommand: npm install --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PAYPAL_MODE
+        value: sandbox
+      - key: PAYPAL_INR_PER_USD
+        value: "84.50"
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: APP_URL
+        sync: false

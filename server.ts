@@ -107,9 +107,24 @@ async function callGeminiWithResilience(
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT) || 3000;
 
+  app.set('trust proxy', 1);
   app.use(express.json({ limit: '15mb' }));
+
+  const getPublicOrigin = (req: express.Request): string => {
+    if (process.env.RENDER_EXTERNAL_URL?.trim()) {
+      return process.env.RENDER_EXTERNAL_URL.trim().replace(/\/$/, '');
+    }
+    if (process.env.APP_URL?.trim() && !process.env.APP_URL.includes('localhost')) {
+      return process.env.APP_URL.trim().replace(/\/$/, '');
+    }
+    const forwardedProto = (req.headers['x-forwarded-proto'] as string | undefined)
+      ?.split(',')[0]
+      ?.trim();
+    const proto = forwardedProto || req.protocol;
+    return `${proto}://${req.get('host')}`;
+  };
 
   // 1. Health check
   app.get('/api/health', async (req, res) => {
@@ -700,7 +715,7 @@ Return ONLY valid JSON:
         return;
       }
 
-      const origin = `${req.protocol}://${req.get('host')}`;
+      const origin = getPublicOrigin(req);
       const returnUrl = `${origin}/?paypal_return=order`;
       const cancelUrl = `${origin}/?paypal_cancel=order`;
 
@@ -757,7 +772,7 @@ Return ONLY valid JSON:
         return;
       }
 
-      const origin = `${req.protocol}://${req.get('host')}`;
+      const origin = getPublicOrigin(req);
       const subscription = await createSandboxSubscription({
         name: String(name),
         amountINR: Number(amountINR),

@@ -169,6 +169,16 @@ npm run build
 npm start
 ```
 
+### Deploy to Render (Keeping API Keys Private)
+This repository includes a [`render.yaml`](./render.yaml) Blueprint configured with `sync: false` for secret keys:
+1. Create a new **Web Service** (or **Blueprint**) on [Render](https://render.com) connected to this GitHub repository.
+2. Build Command: `npm install --include=dev && npm run build` | Start Command: `npm start` | Health Check Path: `/api/health`.
+3. Add your private keys strictly inside **Render Dashboard -> Environment**:
+   - `GEMINI_API_KEY`
+   - `PAYPAL_CLIENT_ID`
+   - `PAYPAL_CLIENT_SECRET`
+   - `APP_URL` = your `https://<your-service>.onrender.com` URL (`NODE_ENV=production`, `PAYPAL_MODE=sandbox`, and `PAYPAL_INR_PER_USD=84.50` are pre-set in `render.yaml`).
+
 ---
 
 ## Step-by-Step Interactive Walkthrough
